@@ -1,4 +1,4 @@
-./import os
+import os
 import hashlib
 from datetime import datetime
 from typing import Dict, Any, List, Tuple
@@ -31,10 +31,17 @@ class Indexer:
         # update in db
         pass
 
-    def index_files(root_dir: str):
-        # split files into chunks
-        # loop through dirs checking all subdirs and indexing each file
+    def index_directory(root_dir: str) -> int:
+        # loop through dirs checking all subdirs
+        # split files into overlapping chunks
+        # index each chunk as its own entry
         # batch update db to save time (save last batch index incase of failure)
+        pass
+
+
+    def search(query: str) -> List[Dict[str, Any]]:
+        # search db for query
+        # return results
         pass
 
     
