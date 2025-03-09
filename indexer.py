@@ -26,15 +26,15 @@ class Indexer:
         pass
 
     def index_file(file_path: str, should_commit: bool = True):
-        # check hash to see if different
-        # index based on file type
-        # update in db
+        # split file into overlapping chunks, will have a seperate entry for each
+        # generate hash for each chunk
+        # check if hash has changed since last index
+        # multi thread this part to index chunks in parallel
+        # update db with new chunks
         pass
 
     def index_directory(root_dir: str) -> int:
         # loop through dirs checking all subdirs
-        # split files into overlapping chunks
-        # index each chunk as its own entry
         # batch update db to save time (save last batch index incase of failure)
         pass
 
