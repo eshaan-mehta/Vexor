@@ -1,9 +1,11 @@
+import os
 from indexer import Indexer
-from watchdog import FileChangeHandler, Observer
+from fileobserver import FileChangeHandler
+from watchdog.observers import Observer
 
 
 def main():
-    root_dir = "./test_files"
+    root_dir = os.path.abspath("./test")
 
     indexer = Indexer()
 
@@ -31,12 +33,7 @@ def main():
             else:
                 print(f"Found {len(results)} files:")
                 for i, result in enumerate(results):
-                    metadata = result['metadata']
-                    print(f"\n{i+1}. {metadata['filename']} ({metadata['extension']}) - {result['weighted_score']:.2f} score")
-                    print(f"   Path: {metadata['path']}")
-                    print(f"   Modified: {metadata['modified']}")
-                    if result['content_preview']:
-                        print(f"   Preview: {result['content_preview']}")
+                    print(f"{i}. {result}")
     
     except KeyboardInterrupt:
         print("Exiting...")
