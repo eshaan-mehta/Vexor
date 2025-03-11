@@ -2,7 +2,7 @@ import os
 from watchdog.events import FileSystemEventHandler
 from watchdog.events import DirModifiedEvent, FileModifiedEvent, DirCreatedEvent, FileCreatedEvent, DirMovedEvent, FileMovedEvent, DirDeletedEvent, FileDeletedEvent
 import time
-from indexer import Indexer
+from db.indexer import Indexer
 
 class FileChangeHandler(FileSystemEventHandler):
     def __init__(self, indexer: Indexer):

@@ -34,18 +34,44 @@ class Indexer:
         return  hashlib.sha256(file_path.encode()).hexdigest()
 
     def index_file(self, file_path: str, should_commit: bool = True):
+        if os.path.isdir(file_path) or not os.path.exists(file_path):
+            return
+        
+        name = os.path.basename(file_path)
+        
+        # check if file is hidden
+        if name.startswith(".") or name.startswith("__"):
+            print(f"\nSkipping hidden file: {name}")
+            return
+
+        # check if file is too large
+        if os.path.getsize(file_path) > 100_000_000: # 100MB
+            print(f"\nSkipping large file: {name}")
+            return
+        
+        
+
         # split file into overlapping chunks, will have a seperate entry for each
         # generate hash for each chunk
         # check if hash has changed since last index
         # multi thread this part to index chunks in parallel
         # update db with new chunks
-        name = os.path.basename(file_path)
         print(f"Done Indexing file: {name}")
 
     def index_directory(self, root_dir: str) -> int:
         # loop through dirs checking all subdirs
-        # batch update db to save time (save last batch index incase of failure)
         count = 0
+        for path, dirs, files in os.walk(root_dir):
+            for file in files:
+                file_path = os.path.join(path, file)
+                try:
+                    self.index_file(file_path, should_commit=True)
+                    count += 1
+                     # TODO: batch update db to save time (save last batch index incase of failure)
+                    
+                except Exception as e:
+                    print(f"Exception indexing {file_path}: {e}")
+
         return count
 
 
