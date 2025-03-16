@@ -3,3 +3,4 @@ chromadb
 watchdog
 numpy
 pandas
+python-magic
