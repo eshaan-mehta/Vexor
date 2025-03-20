@@ -66,7 +66,7 @@ class Indexer:
             return
 
         # check if file is too large
-        if os.path.getsize(file_path) > 100_000_000: # 100MB
+        if os.path.getsize(file_path) > 10_000_000: # 10MB
             print(f"\nSkipping large file: {name}")
             return
         
