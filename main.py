@@ -26,7 +26,8 @@ def main():
             if query == "quit":
                 break
 
-            results = indexer.search(query)
+            # results = searchEngine.search()
+            results = []
 
             if not results:
                 print("No files found.")

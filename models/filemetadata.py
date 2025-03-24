@@ -1,13 +1,11 @@
 from dataclasses import dataclass
-from typing import Dict, Any
-from  datetime import datetime
-
+from datetime import datetime
 
 @dataclass
 class FileMetadata:
     file_id: str
     name: str
-    extenstion: str
+    extension: str
     path: str
     parent_dir: str
     size: int
