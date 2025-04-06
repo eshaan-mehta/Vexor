@@ -7,6 +7,7 @@ from datetime import datetime
 from dataclasses import asdict
 from typing import Dict, Any, List, Tuple
 from chromadb.config import Settings
+from chromadb.utils.embedding_functions import SentenceTransformerEmbeddingFunction
 from sentence_transformers import SentenceTransformer
 from pathlib import Path
 
@@ -14,7 +15,7 @@ from models.filemetadata import FileMetadata
 
 
 class Indexer:
-    embedding_model = SentenceTransformer('all-MiniLM-L6-v2')  
+    embedding_function = SentenceTransformerEmbeddingFunction(model_name="all-MiniLM-L6-v2")  
 
     def __init__(self, db_path: str = "./chroma"):
         os.makedirs(db_path, exist_ok=True)
@@ -25,13 +26,13 @@ class Indexer:
         ))
 
         self.content_collection = self.client.get_or_create_collection(
-            name="file_contents",
-            embedding_function=None # custom embedding
+            name="file_content",
+            embedding_function=self.embedding_function
         )
 
         self.metadata_collection = self.client.get_or_create_collection(
             name="file_metadata",
-            embedding_function=None
+            embedding_function=self.embedding_function
         )
         
     def get_file_hash(self, file_path: str) -> str:
@@ -89,12 +90,12 @@ class Indexer:
         try:
             metadata = self.extract_metadata(file_path)
             self.metadata_collection.add(
-                documents=[name],
+                documents=[str(metadata)],
                 metadatas=[asdict(metadata)],
                 ids=[f"meta-{metadata.file_id}"]  # metadata namespace
             )
-
-            content = extract_content(file_path, metadata.mime_type)
+            print(asdict(metadata))
+            content = self.extract_content(file_path, metadata.mime_type)
             if content:
                 self.content_collection.add(
                     documents=[content],

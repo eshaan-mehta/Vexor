@@ -1,6 +1,6 @@
 import os
 from db.indexer import Indexer
-from filesystem.observer import FileChangeHandler
+from filesystem.filechangehandler import FileChangeHandler
 from watchdog.observers import Observer
 
 

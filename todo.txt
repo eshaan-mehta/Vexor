@@ -1,0 +1,11 @@
+Immediate
+- search ranking weightedly
+- test search and indexing quality
+- index answers using file hash
+- handle more than just .txt files
+
+
+Improvements
+- put search and indexing workers on background processes/threads
+- split file into smaller chunks for storage and more granular search
+- create ui
