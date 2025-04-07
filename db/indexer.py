@@ -17,7 +17,11 @@ from models.filemetadata import FileMetadata
 class Indexer:
     embedding_function = SentenceTransformerEmbeddingFunction(model_name="all-MiniLM-L6-v2")  
 
-    def __init__(self, db_path: str = "./chroma"):
+    def __init__(self, 
+            db_path: str = "./chroma", 
+            metadata_collection_name: str = "file_metadata",
+            content_collection_name: str = "file_content"
+        ):
         os.makedirs(db_path, exist_ok=True)
 
         self.client = chromadb.Client(Settings(
@@ -26,20 +30,32 @@ class Indexer:
         ))
 
         self.content_collection = self.client.get_or_create_collection(
-            name="file_content",
-            embedding_function=self.embedding_function
+            name=content_collection_name,
+            embedding_function=self.embedding_function,
+            metadata = {
+                "hnsw:space": "cosine",  # cosine better for text embeddings
+                "hnsw:construction_ef": 100,  # size of candidates during indexing (default = 100)
+                "hnsw:search_ef": 100,  # size of candidates during searching (default = 100)
+                "hnsw:M": 16  # max neighbours in node graph (default = 16)
+            }
         )
 
         self.metadata_collection = self.client.get_or_create_collection(
-            name="file_metadata",
-            embedding_function=self.embedding_function
+            name=metadata_collection_name,
+            embedding_function=self.embedding_function,
+            metadata = {
+                "hnsw:space": "cosine",  # cosine better for text embeddings
+                "hnsw:construction_ef": 100,  # size of candidates during indexing (default = 100)
+                "hnsw:search_ef": 100,  # size of candidates during searching (default = 100)
+                "hnsw:M": 16  # max neighbours in node graph (default = 16)
+            }
         )
         
     def get_file_hash(self, file_path: str) -> str:
         # TODO: Update to use file contents
         return  hashlib.sha256(file_path.encode()).hexdigest()
 
-    def extract_metadata(self, file_path: str) -> FileMetadata:
+    def __extract_metadata(self, file_path: str) -> FileMetadata:
         stat = os.stat(file_path)
         path = Path(file_path)
         
@@ -61,7 +77,7 @@ class Indexer:
             mime_type=mime_type,
         )
 
-    def extract_content(self, file_path: str, mime_type: str) -> str:
+    def __extract_content(self, file_path: str, mime_type: str) -> str:
         if not mime_type.startswith("text/"):
             raise Exception("File type not text")
         
@@ -77,25 +93,29 @@ class Indexer:
         
         name = os.path.basename(file_path)
         
-        # check if file is hidden
+        # skip hidden files
         if name.startswith(".") or name.startswith("__"):
             print(f"\nSkipping hidden file: {name}")
             return False
 
-        # check if file is too large
+        # skip large files until TODO: chunking
         if os.path.getsize(file_path) > 10_000_000: # 10MB
             print(f"\nSkipping large file: {name}")
             return False
         
         try:
-            metadata = self.extract_metadata(file_path)
+            metadata = self.__extract_metadata(file_path)
+
+            # TODO: check if file already exists in db and hasnt changed since last time
+
+
             self.metadata_collection.add(
                 documents=[str(metadata)],
                 metadatas=[asdict(metadata)],
-                ids=[f"meta-{metadata.file_id}"]  # metadata namespace
+                ids=[f"meta-{metadata.file_id}"]
             )
-            print(asdict(metadata))
-            content = self.extract_content(file_path, metadata.mime_type)
+
+            content = self.__extract_content(file_path, metadata.mime_type)
             if content:
                 self.content_collection.add(
                     documents=[content],
@@ -129,7 +149,6 @@ class Indexer:
                     success = self.index_file(file_path, should_commit=True)
                     if success:
                         count += 1
-                     # TODO: batch update db to save time (save last batch index incase of failure)
                     
                 except Exception as e:
                     print(f"Exception indexing {file_path}: {e}")

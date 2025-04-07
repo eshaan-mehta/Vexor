@@ -1,5 +1,6 @@
 Immediate
 - search ranking weightedly
+- don't index files if they haven't changed since the last time
 - test search and indexing quality
 - index answers using file hash
 - handle more than just .txt files
@@ -9,3 +10,4 @@ Improvements
 - put search and indexing workers on background processes/threads
 - split file into smaller chunks for storage and more granular search
 - create ui
+- batch update db to save time on indexing (save last batch index incase of failure)

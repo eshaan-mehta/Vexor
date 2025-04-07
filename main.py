@@ -1,5 +1,6 @@
 import os
 from db.indexer import Indexer
+from db.searcher import Searcher
 from filesystem.filechangehandler import FileChangeHandler
 from watchdog.observers import Observer
 
@@ -7,7 +8,8 @@ from watchdog.observers import Observer
 def main():
     root_dir = os.path.abspath("./test")
 
-    indexer = Indexer()
+    indexer = Indexer() # file indexer
+    searcher = Searcher() # search engine
 
     print(f"Started indexing directory: {root_dir}")
     count = indexer.index_directory(root_dir)
@@ -26,22 +28,28 @@ def main():
             if query == "quit":
                 break
 
-            # results = searchEngine.search()
-            results = []
+            results = searcher.search(query)
 
             if not results:
                 print("No files found.")
             else:
-                print(f"Found {len(results)} files:")
-                for i, result in enumerate(results):
-                    print(f"{i}. {result}")
+                for result in results:
+                    print(f"File: {result['metadata']['name']}")
+                    print(f"Path: {result['metadata']['path']}")
+                    print(
+                        f"Score: {result['total_score']:.4f} "
+                        f"(Metadata: {result['metadata_score']:.4f}, Content: {result['content_score']:.4f}) "
+                        f"(Raw Metadata: {result['raw_metadata_distance']:.4f}, Raw Content: {result['raw_content_distance']:.4f})"
+                    )
+                    # print(f"Preview: {search_engine.get_file_preview(result['file_id'])[:100]}...")
+                    print("-" * 50)
     
     except KeyboardInterrupt:
         print("Exiting...")
         pass
     finally:
         print("Stopping file watcher...")
-        observer.stop()
+        observer.stop() # stop file watcher thread
         observer.join()
             
 
