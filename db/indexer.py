@@ -97,7 +97,7 @@ class Indexer:
         if name.startswith(".") or name.startswith("__"):
             print(f"\nSkipping hidden file: {name}")
             return False
-
+            
         # skip large files until TODO: chunking
         if os.path.getsize(file_path) > 10_000_000: # 10MB
             print(f"\nSkipping large file: {name}")
@@ -107,6 +107,14 @@ class Indexer:
             metadata = self.__extract_metadata(file_path)
 
             # TODO: check if file already exists in db and hasnt changed since last time
+            if result := self.metadata_collection.get(where={"file_id": metadata.file_id}):
+                # check if file has changed since last index
+                print(result)
+                if result["metadatas"] and len(result["metadatas"]) > 0:
+                    existing_metadata = result["metadatas"][0]
+                    if existing_metadata["modified_at"] == metadata.modified_at:
+                        print(f"No change in: {name}")
+                        return False
 
 
             self.metadata_collection.add(
