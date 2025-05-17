@@ -20,4 +20,7 @@ Search through your file system using natural language. Extends the search to yo
 1. Create venv to run using `python3.12 -m venv venv`
 2. Activate the venv Windows: `venv\Scripts\activate`, Mac: `source venv/bin/activate`
 3. Install all the dependencies using `pip install -r requirements.txt`
-4. Run the application `python3 main.py`
+4. If you want, you can change the root directory indexing directory in `main.py`
+5. Run the application `python3 main.py`
+6. Once all the files have been indexed, you can type search through your files using natural language and it will return the top 10 results.
+7. Enjoy!
