@@ -2,6 +2,9 @@
 Search through your file system using natural language. Extends the search to your file contents allowing for more precise and accurate search results. The best part, it all runs locally on your machine, so none of your data leaves your device!
 
 # How it works
+
+![Flowchart](images/flow.png)
+
 ### Storage
 - Upon startup, the application runs a background process to index all the files in your desired directory into a local **ChromaDb vector database**. (Currently the directory being used is `/test`. This includes a variety of different 
 - The files are split into tables based on their metadata and contents, and each of those are embedded using the **ChromaDB Embedding API**. The file is hashed and used as a key for each entry
