@@ -8,7 +8,6 @@ Search through your file system using _**natural language**_. Extends the search
 ### Storage
 - Upon startup, the application runs a background process to index all the files in your desired directory into a local **ChromaDb vector database**. (Currently, the directory being used is `/test`. This includes a variety of different 
 - The files are split into tables based on their metadata and contents, and each of those are embedded using the **ChromaDB Embedding API**. The file is hashed and used as a key for each entry
-  - Future optimization will include additional chunking for large files for additional search granularity, batch indexing by splitting the work over `n` threads to reindex files faster
 - There is a separate observer thread running in the background that uses the **Watchdog** library to observe the file system and detect when any files are created, updated, moved, or deleted. This will then invoke the indexer class to either index, reindex, or delete the file entry.
 
 ### Querying
@@ -16,7 +15,6 @@ Search through your file system using _**natural language**_. Extends the search
 - The results are then scored using a **weighted average and normalization algorithm** that is optimized to maximize matches.
   - Cosine similarity returns a score in the range [0, 2] where 0 = perfectly similar, 1 = orthogonal, 2 = perfectly dissimilar. Using an **inverted sigmoid function** that is scaled and shifted to match the general range of the data, this results in optimal weighing for matches.
 - The results are ranked and sorted in descending order based on the % match.
-  - Future iterations will include a nice GUI similar to Spotlight search on MAC to allow for fast and intuitive search. 
 
 
 # How to Run
