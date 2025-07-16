@@ -1,4 +1,6 @@
 Immediate
+- directory indexing needs to be recursive
+- ability to check if a file has been deletd on first index
 - put initial indexing on background thread
 - index answers using file hash
 - split file into smaller chunks for storage and more granular search
