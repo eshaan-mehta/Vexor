@@ -1,13 +1,10 @@
 Immediate
-- don't index files on move, just update metadata (don't create duplicate)
 - put initial indexing on background thread
-- search ranking weightedly
 - index answers using file hash
-- on delete doesn't work
+- split file into smaller chunks for storage and more granular search
+- put search and indexing workers on background processes/threads
+- create ui
 
 
 Improvements
-- put search and indexing workers on background processes/threads
-- split file into smaller chunks for storage and more granular search
-- create ui
 - batch update db to save time on indexing (save last batch index incase of failure)
