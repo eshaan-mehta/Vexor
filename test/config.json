@@ -1,0 +1,290 @@
+{
+  "application": {
+    "name": "Vexor Search Engine",
+    "version": "2.1.0",
+    "description": "Advanced semantic search engine with multi-file-type support",
+    "author": "AI Assistant",
+    "license": "MIT",
+    "homepage": "https://github.com/example/vexor",
+    "repository": {
+      "type": "git",
+      "url": "https://github.com/example/vexor.git"
+    }
+  },
+  "database": {
+    "type": "chromadb",
+    "host": "localhost",
+    "port": 8000,
+    "path": "./chroma",
+    "collections": {
+      "file_metadata": {
+        "name": "file_metadata",
+        "embedding_function": "all-MiniLM-L6-v2",
+        "distance_metric": "cosine"
+      },
+      "file_content": {
+        "name": "file_content",
+        "embedding_function": "all-MiniLM-L6-v2",
+        "distance_metric": "cosine"
+      }
+    },
+    "connection_pool": {
+      "max_connections": 10,
+      "timeout": 30,
+      "retry_attempts": 3
+    }
+  },
+  "indexer": {
+    "batch_size": 100,
+    "max_workers": 4,
+    "chunk_size": 1000,
+    "overlap_size": 200,
+    "file_size_limits": {
+      "text_files": "5MB",
+      "office_documents": "20MB",
+      "pdf_files": "50MB",
+      "default": "10MB"
+    },
+    "supported_extensions": [
+      ".txt", ".md", ".html", ".htm", ".xml",
+      ".py", ".js", ".ts", ".jsx", ".tsx",
+      ".java", ".cpp", ".c", ".h", ".cs",
+      ".php", ".rb", ".go", ".rs", ".swift",
+      ".kt", ".scala", ".css", ".scss", ".sass",
+      ".less", ".json", ".yaml", ".yml",
+      ".ini", ".cfg", ".conf", ".log", ".sql",
+      ".sh", ".bash", ".zsh", ".csv", ".tsv",
+      ".pdf", ".docx", ".xlsx", ".pptx"
+    ],
+    "exclude_patterns": [
+      ".git/**",
+      "node_modules/**",
+      "venv/**",
+      "__pycache__/**",
+      "*.pyc",
+      ".DS_Store",
+      "Thumbs.db"
+    ],
+    "preprocessing": {
+      "remove_duplicates": true,
+      "normalize_whitespace": true,
+      "extract_metadata": true,
+      "generate_summaries": false
+    }
+  },
+  "searcher": {
+    "default_limit": 10,
+    "max_limit": 100,
+    "similarity_threshold": 0.7,
+    "search_timeout": 30,
+    "result_formatting": {
+      "include_snippets": true,
+      "snippet_length": 200,
+      "highlight_matches": true,
+      "include_metadata": true
+    },
+    "ranking": {
+      "semantic_weight": 0.7,
+      "keyword_weight": 0.2,
+      "recency_weight": 0.1,
+      "boost_factors": {
+        "title_match": 1.5,
+        "exact_phrase": 1.3,
+        "file_type_preference": 1.2
+      }
+    }
+  },
+  "api": {
+    "host": "localhost",
+    "port": 8080,
+    "cors": {
+      "enabled": true,
+      "origins": ["http://localhost:3000", "http://localhost:8080"],
+      "methods": ["GET", "POST", "PUT", "DELETE"],
+      "headers": ["Content-Type", "Authorization"]
+    },
+    "authentication": {
+      "enabled": false,
+      "type": "jwt",
+      "secret": "your-secret-key-here",
+      "expires_in": "24h"
+    },
+    "rate_limiting": {
+      "enabled": true,
+      "window_ms": 900000,
+      "max_requests": 100,
+      "message": "Too many requests, please try again later"
+    },
+    "endpoints": {
+      "/search": {
+        "methods": ["GET", "POST"],
+        "description": "Search through indexed content",
+        "parameters": {
+          "q": "Search query string",
+          "limit": "Maximum number of results (default: 10)",
+          "offset": "Number of results to skip (default: 0)",
+          "file_types": "Filter by file types (optional)",
+          "date_range": "Filter by date range (optional)"
+        }
+      },
+      "/index": {
+        "methods": ["POST"],
+        "description": "Index new files or directories",
+        "parameters": {
+          "path": "File or directory path to index",
+          "recursive": "Index subdirectories (default: true)",
+          "force": "Force re-indexing (default: false)"
+        }
+      },
+      "/status": {
+        "methods": ["GET"],
+        "description": "Get indexer status and statistics",
+        "response": {
+          "total_files": "Number of indexed files",
+          "total_size": "Total size of indexed content",
+          "last_updated": "Timestamp of last index update"
+        }
+      }
+    }
+  },
+  "logging": {
+    "level": "INFO",
+    "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    "handlers": {
+      "console": {
+        "enabled": true,
+        "level": "INFO"
+      },
+      "file": {
+        "enabled": true,
+        "level": "DEBUG",
+        "filename": "logs/vexor.log",
+        "max_size": "10MB",
+        "backup_count": 5
+      },
+      "error_file": {
+        "enabled": true,
+        "level": "ERROR",
+        "filename": "logs/errors.log",
+        "max_size": "5MB",
+        "backup_count": 3
+      }
+    }
+  },
+  "monitoring": {
+    "metrics": {
+      "enabled": true,
+      "endpoint": "/metrics",
+      "include_system_metrics": true
+    },
+    "health_check": {
+      "enabled": true,
+      "endpoint": "/health",
+      "checks": [
+        "database_connection",
+        "disk_space",
+        "memory_usage"
+      ]
+    },
+    "alerts": {
+      "enabled": false,
+      "webhook_url": "",
+      "thresholds": {
+        "cpu_usage": 80,
+        "memory_usage": 85,
+        "disk_usage": 90,
+        "error_rate": 5
+      }
+    }
+  },
+  "performance": {
+    "caching": {
+      "enabled": true,
+      "backend": "memory",
+      "ttl": 3600,
+      "max_size": "100MB"
+    },
+    "concurrency": {
+      "max_concurrent_requests": 50,
+      "request_timeout": 30,
+      "queue_size": 1000
+    },
+    "optimization": {
+      "enable_compression": true,
+      "enable_minification": true,
+      "enable_caching_headers": true
+    }
+  },
+  "security": {
+    "input_validation": {
+      "enabled": true,
+      "max_query_length": 1000,
+      "allowed_characters": "alphanumeric_and_spaces",
+      "sanitize_html": true
+    },
+    "file_safety": {
+      "scan_for_malware": false,
+      "allowed_mime_types": [
+        "text/plain",
+        "text/html",
+        "text/markdown",
+        "application/json",
+        "application/pdf",
+        "application/msword"
+      ],
+      "max_upload_size": "50MB"
+    }
+  },
+  "features": {
+    "experimental": {
+      "auto_categorization": false,
+      "semantic_clustering": false,
+      "real_time_indexing": true,
+      "machine_learning_ranking": false
+    },
+    "integrations": {
+      "elasticsearch": {
+        "enabled": false,
+        "host": "localhost:9200",
+        "index": "vexor"
+      },
+      "slack": {
+        "enabled": false,
+        "webhook_url": "",
+        "notifications": ["indexing_complete", "errors"]
+      },
+      "email": {
+        "enabled": false,
+        "smtp_host": "",
+        "smtp_port": 587,
+        "username": "",
+        "password": ""
+      }
+    }
+  },
+  "development": {
+    "debug_mode": false,
+    "auto_reload": true,
+    "profiling": false,
+    "test_data": {
+      "generate_sample_files": true,
+      "sample_count": 100,
+      "cleanup_on_exit": true
+    }
+  },
+  "deployment": {
+    "environment": "development",
+    "container": {
+      "image": "vexor:latest",
+      "port": 8080,
+      "memory_limit": "2GB",
+      "cpu_limit": "1.0"
+    },
+    "scaling": {
+      "auto_scaling": false,
+      "min_instances": 1,
+      "max_instances": 5,
+      "target_cpu_utilization": 70
+    }
+  }
+} 

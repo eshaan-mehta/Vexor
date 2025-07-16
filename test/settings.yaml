@@ -1,0 +1,562 @@
+# Vexor Search Engine Configuration
+# This YAML file contains comprehensive configuration settings for the Vexor search engine
+# including database settings, indexing parameters, API configuration, and more.
+#
+# Author: AI Assistant
+# Version: 2.1.0
+# License: MIT
+
+# Application Information
+application:
+  name: "Vexor Search Engine"
+  version: "2.1.0"
+  description: "Advanced semantic search engine with multi-file-type support"
+  build_date: "2024-01-15"
+  environment: "development"  # development, staging, production
+  debug: true
+  
+# Database Configuration
+database:
+  type: "chromadb"
+  connection:
+    host: "localhost"
+    port: 8000
+    path: "./chroma"
+    timeout: 30
+    max_retries: 3
+    retry_delay: 5
+  
+  collections:
+    metadata:
+      name: "file_metadata"
+      embedding_function: "all-MiniLM-L6-v2"
+      distance_metric: "cosine"
+      persist: true
+    content:
+      name: "file_content" 
+      embedding_function: "all-MiniLM-L6-v2"
+      distance_metric: "cosine"
+      persist: true
+      
+  connection_pool:
+    max_connections: 10
+    min_connections: 2
+    connection_timeout: 30
+    idle_timeout: 300
+
+# Indexing Configuration
+indexing:
+  batch_processing:
+    batch_size: 100
+    max_workers: 4
+    queue_size: 1000
+    
+  chunking:
+    chunk_size: 1000
+    overlap_size: 200
+    max_chunks_per_file: 1000
+    strategy: "recursive"  # sentence, paragraph, recursive
+    
+  file_handling:
+    size_limits:
+      text_files: "5MB"
+      office_documents: "20MB" 
+      pdf_files: "50MB"
+      default: "10MB"
+    
+    supported_extensions:
+      - ".txt"
+      - ".md"
+      - ".markdown"
+      - ".html"
+      - ".htm"
+      - ".xml"
+      - ".py"
+      - ".js"
+      - ".ts"
+      - ".jsx"
+      - ".tsx"
+      - ".java"
+      - ".cpp"
+      - ".c"
+      - ".h"
+      - ".cs"
+      - ".php"
+      - ".rb"
+      - ".go"
+      - ".rs"
+      - ".swift"
+      - ".kt"
+      - ".scala"
+      - ".css"
+      - ".scss"
+      - ".sass"
+      - ".less"
+      - ".json"
+      - ".yaml"
+      - ".yml"
+      - ".ini"
+      - ".cfg"
+      - ".conf"
+      - ".log"
+      - ".sql"
+      - ".sh"
+      - ".bash"
+      - ".zsh"
+      - ".csv"
+      - ".tsv"
+      - ".pdf"
+      - ".docx"
+      - ".xlsx"
+      - ".pptx"
+    
+    exclude_patterns:
+      - ".git/**"
+      - "node_modules/**"
+      - "venv/**"
+      - "__pycache__/**"
+      - "*.pyc"
+      - ".DS_Store"
+      - "Thumbs.db"
+      - "*.tmp"
+      - "*.temp"
+      - "*.swp"
+      - "*~"
+    
+    encoding:
+      default: "utf-8"
+      fallback: "latin-1"
+      detection: true
+      error_handling: "ignore"  # strict, ignore, replace
+      
+  preprocessing:
+    normalize_whitespace: true
+    remove_duplicates: true
+    extract_metadata: true
+    generate_summaries: false
+    language_detection: true
+    
+  monitoring:
+    progress_reporting: true
+    error_tracking: true
+    performance_metrics: true
+    log_level: "INFO"  # DEBUG, INFO, WARNING, ERROR
+
+# Search Configuration
+search:
+  default_settings:
+    limit: 10
+    max_limit: 100
+    timeout: 30
+    similarity_threshold: 0.7
+    
+  result_formatting:
+    include_snippets: true
+    snippet_length: 200
+    highlight_matches: true
+    include_metadata: true
+    max_snippet_words: 50
+    
+  ranking:
+    algorithm: "hybrid"  # semantic, keyword, hybrid
+    weights:
+      semantic: 0.7
+      keyword: 0.2
+      recency: 0.1
+    
+    boost_factors:
+      title_match: 1.5
+      exact_phrase: 1.3
+      file_type_preference: 1.2
+      recent_files: 1.1
+      
+  caching:
+    enabled: true
+    ttl: 3600  # seconds
+    max_size: "100MB"
+    strategy: "lru"  # lru, lfu, fifo
+
+# API Configuration
+api:
+  server:
+    host: "localhost"
+    port: 8080
+    workers: 4
+    max_connections: 100
+    
+  cors:
+    enabled: true
+    origins:
+      - "http://localhost:3000"
+      - "http://localhost:8080"
+      - "https://vexor.example.com"
+    methods:
+      - "GET"
+      - "POST"
+      - "PUT"
+      - "DELETE"
+      - "OPTIONS"
+    headers:
+      - "Content-Type"
+      - "Authorization"
+      - "X-Requested-With"
+    credentials: true
+    
+  authentication:
+    enabled: false
+    type: "jwt"  # jwt, apikey, oauth
+    secret: "your-secret-key-here"
+    expires_in: "24h"
+    refresh_enabled: true
+    
+  rate_limiting:
+    enabled: true
+    strategy: "fixed_window"  # fixed_window, sliding_window, token_bucket
+    window_ms: 900000  # 15 minutes
+    max_requests: 100
+    skip_successful_requests: false
+    message: "Too many requests, please try again later"
+    
+  endpoints:
+    search:
+      path: "/search"
+      methods: ["GET", "POST"]
+      description: "Search through indexed content"
+      rate_limit_override:
+        max_requests: 50
+        window_ms: 60000
+      parameters:
+        q:
+          type: "string"
+          required: true
+          description: "Search query string"
+          max_length: 1000
+        limit:
+          type: "integer"
+          required: false
+          default: 10
+          min: 1
+          max: 100
+        file_types:
+          type: "array"
+          required: false
+          description: "Filter by file types"
+          
+    index:
+      path: "/index"
+      methods: ["POST"]
+      description: "Index new files or directories"
+      auth_required: true
+      parameters:
+        path:
+          type: "string"
+          required: true
+          description: "File or directory path to index"
+        recursive:
+          type: "boolean"
+          required: false
+          default: true
+        force:
+          type: "boolean"
+          required: false
+          default: false
+          
+    status:
+      path: "/status"
+      methods: ["GET"]
+      description: "Get indexer status and statistics"
+      cache_ttl: 60  # seconds
+
+# Logging Configuration  
+logging:
+  level: "INFO"  # DEBUG, INFO, WARNING, ERROR, CRITICAL
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  date_format: "%Y-%m-%d %H:%M:%S"
+  
+  handlers:
+    console:
+      enabled: true
+      level: "INFO"
+      format: "%(levelname)s: %(message)s"
+      
+    file:
+      enabled: true
+      level: "DEBUG"
+      filename: "logs/vexor.log"
+      max_size: "10MB"
+      backup_count: 5
+      rotation: "time"  # size, time
+      when: "midnight"  # for time rotation
+      
+    error_file:
+      enabled: true
+      level: "ERROR"
+      filename: "logs/errors.log"
+      max_size: "5MB"
+      backup_count: 3
+      
+    structured:
+      enabled: false
+      level: "INFO"
+      format: "json"
+      filename: "logs/structured.log"
+      
+  loggers:
+    "vexor.indexer":
+      level: "DEBUG"
+      propagate: true
+    "vexor.searcher":
+      level: "INFO"
+      propagate: true
+    "chromadb":
+      level: "WARNING"
+      propagate: false
+
+# Monitoring and Metrics
+monitoring:
+  metrics:
+    enabled: true
+    endpoint: "/metrics"
+    format: "prometheus"  # prometheus, json
+    include_system_metrics: true
+    collection_interval: 60  # seconds
+    
+  health_checks:
+    enabled: true
+    endpoint: "/health"
+    checks:
+      - name: "database_connection"
+        timeout: 5
+        critical: true
+      - name: "disk_space"
+        threshold: "90%"
+        critical: false
+      - name: "memory_usage"
+        threshold: "85%"
+        critical: false
+      - name: "indexer_status"
+        timeout: 3
+        critical: false
+        
+  alerts:
+    enabled: false
+    webhook_url: ""
+    channels:
+      - "email"
+      - "slack"
+    thresholds:
+      cpu_usage: 80
+      memory_usage: 85
+      disk_usage: 90
+      error_rate: 5
+      response_time: 1000  # milliseconds
+      
+  profiling:
+    enabled: false
+    output_dir: "./profiles"
+    interval: 300  # seconds
+
+# Performance Configuration
+performance:
+  caching:
+    enabled: true
+    backend: "memory"  # memory, redis, memcached
+    default_ttl: 3600
+    max_memory: "256MB"
+    
+    strategies:
+      search_results:
+        ttl: 1800
+        max_entries: 10000
+      file_metadata:
+        ttl: 7200
+        max_entries: 50000
+      embeddings:
+        ttl: 86400
+        max_entries: 100000
+        
+  concurrency:
+    max_concurrent_requests: 50
+    request_timeout: 30
+    queue_timeout: 10
+    worker_timeout: 120
+    
+  optimization:
+    enable_compression: true
+    compression_algorithm: "gzip"  # gzip, deflate, brotli
+    enable_minification: true
+    enable_etags: true
+    enable_caching_headers: true
+    
+  memory_management:
+    gc_threshold: "1GB"
+    max_memory_usage: "2GB"
+    cleanup_interval: 300  # seconds
+
+# Security Configuration
+security:
+  input_validation:
+    enabled: true
+    max_query_length: 1000
+    allowed_characters: "alphanumeric_spaces_punctuation"
+    sanitize_html: true
+    xss_protection: true
+    
+  file_safety:
+    scan_for_malware: false
+    virus_scanner: "clamav"
+    allowed_mime_types:
+      - "text/plain"
+      - "text/html"
+      - "text/markdown"
+      - "application/json"
+      - "application/pdf"
+      - "application/msword"
+      - "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    max_upload_size: "50MB"
+    quarantine_suspicious_files: true
+    
+  encryption:
+    enabled: false
+    algorithm: "AES-256-GCM"
+    key_rotation_interval: 90  # days
+    encrypt_sensitive_data: true
+    
+  access_control:
+    enable_rbac: false
+    default_permissions: ["read"]
+    admin_permissions: ["read", "write", "admin"]
+    guest_permissions: ["read"]
+
+# Feature Flags
+features:
+  experimental:
+    auto_categorization: false
+    semantic_clustering: false
+    real_time_indexing: true
+    machine_learning_ranking: false
+    query_suggestions: true
+    smart_filters: false
+    
+  integrations:
+    elasticsearch:
+      enabled: false
+      host: "localhost:9200"
+      index: "vexor"
+      sync_interval: 3600
+      
+    slack:
+      enabled: false
+      webhook_url: ""
+      notifications:
+        - "indexing_complete"
+        - "errors"
+        - "system_alerts"
+        
+    email:
+      enabled: false
+      smtp_host: ""
+      smtp_port: 587
+      username: ""
+      password: ""
+      use_tls: true
+      
+    webhooks:
+      enabled: false
+      endpoints:
+        - url: "https://example.com/webhook"
+          events: ["index_complete", "search_performed"]
+          secret: "webhook-secret"
+
+# Development Configuration
+development:
+  debug_mode: true
+  auto_reload: true
+  hot_reload: false
+  profiling: false
+  
+  test_data:
+    generate_sample_files: true
+    sample_count: 100
+    cleanup_on_exit: true
+    use_fixtures: true
+    
+  debugging:
+    enable_sql_logging: false
+    log_slow_queries: true
+    slow_query_threshold: 1000  # milliseconds
+    enable_request_logging: true
+
+# Deployment Configuration
+deployment:
+  environment: "development"  # development, staging, production
+  
+  container:
+    image: "vexor:latest"
+    tag: "v2.1.0"
+    port: 8080
+    resources:
+      memory_limit: "2GB"
+      memory_request: "1GB"
+      cpu_limit: "1.0"
+      cpu_request: "0.5"
+      
+  scaling:
+    auto_scaling: false
+    min_instances: 1
+    max_instances: 5
+    target_cpu_utilization: 70
+    target_memory_utilization: 80
+    scale_up_cooldown: 300  # seconds
+    scale_down_cooldown: 600  # seconds
+    
+  backup:
+    enabled: true
+    schedule: "0 2 * * *"  # daily at 2 AM
+    retention_days: 30
+    storage_location: "./backups"
+    compress: true
+    
+  updates:
+    check_for_updates: true
+    update_channel: "stable"  # stable, beta, alpha
+    auto_update: false
+    backup_before_update: true
+
+# Internationalization
+i18n:
+  default_language: "en"
+  supported_languages:
+    - "en"
+    - "es"
+    - "fr"
+    - "de"
+    - "zh"
+    - "ja"
+  
+  text_processing:
+    stemming: true
+    stop_words: true
+    language_detection: true
+    
+# Custom Extensions
+extensions:
+  plugins:
+    - name: "pdf_ocr"
+      enabled: false
+      config:
+        ocr_engine: "tesseract"
+        languages: ["eng", "spa"]
+        
+    - name: "audio_transcription" 
+      enabled: false
+      config:
+        transcription_service: "whisper"
+        supported_formats: [".mp3", ".wav", ".m4a"]
+        
+  custom_processors:
+    - name: "code_analyzer"
+      file_types: [".py", ".js", ".java"]
+      extract_functions: true
+      extract_classes: true
+      extract_comments: true 

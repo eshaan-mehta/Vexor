@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sample Web Page for Testing</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f5f5f5;
+        }
+        .header {
+            color: #333;
+            border-bottom: 2px solid #007acc;
+        }
+        .content {
+            margin-top: 20px;
+            padding: 15px;
+            background: white;
+            border-radius: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Welcome to Our Sample Website</h1>
+        <p>This is a test HTML file to demonstrate content extraction capabilities.</p>
+    </div>
+    
+    <div class="content">
+        <h2>About Our Service</h2>
+        <p>We provide <strong>innovative solutions</strong> for modern web development. Our team specializes in:</p>
+        
+        <ul>
+            <li>Responsive web design</li>
+            <li>Search engine optimization</li>
+            <li>Content management systems</li>
+            <li>E-commerce platforms</li>
+        </ul>
+        
+        <h3>Key Features</h3>
+        <ol>
+            <li><em>Fast loading times</em> - Optimized for performance</li>
+            <li><em>Mobile-first design</em> - Works on all devices</li>
+            <li><em>SEO optimized</em> - Built for search engines</li>
+        </ol>
+        
+        <blockquote>
+            "Technology is best when it brings people together." - Matt Mullenweg
+        </blockquote>
+        
+        <p>Contact us at <a href="mailto:info@example.com">info@example.com</a> for more information.</p>
+    </div>
+    
+    <script>
+        // This JavaScript should be filtered out during content extraction
+        console.log("This script content should not appear in indexed text");
+        
+        function initializePage() {
+            document.addEventListener('DOMContentLoaded', function() {
+                console.log("Page loaded");
+            });
+        }
+        
+        // Analytics tracking code
+        (function() {
+            var analytics = document.createElement('script');
+            analytics.src = 'https://example.com/analytics.js';
+            document.head.appendChild(analytics);
+        })();
+    </script>
+    
+    <footer>
+        <p>&copy; 2024 Sample Company. All rights reserved.</p>
+    </footer>
+</body>
+</html> 

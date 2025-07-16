@@ -1,11 +1,9 @@
 Immediate
 - don't index files on move, just update metadata (don't create duplicate)
 - don't index files if they haven't changed since the last time
+- put initial indexing on background thread
 - search ranking weightedly
-- test search and indexing quality
-- change normalize cosine weights for metadata and content
 - index answers using file hash
-- handle more than just .txt files
 
 
 Improvements
