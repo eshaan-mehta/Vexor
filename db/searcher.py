@@ -18,10 +18,10 @@ class Searcher:
                 content_collection_name: str = "file_content"
                 ):
         
-        self.client = chromadb.Client(Settings(
-            persist_directory=db_path,
-            anonymized_telemetry=False
-        ))
+        self.client = chromadb.PersistentClient(
+            path=db_path,
+            settings=Settings(anonymized_telemetry=False)
+        )
 
         self.metadata_collection = self.client.get_collection(metadata_collection_name)
         self.content_collection = self.client.get_collection(content_collection_name)

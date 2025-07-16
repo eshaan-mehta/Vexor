@@ -33,10 +33,10 @@ class Indexer:
         ):
         os.makedirs(db_path, exist_ok=True)
 
-        self.client = chromadb.Client(Settings(
-            persist_directory=db_path,
-            anonymized_telemetry=False
-        ))
+        self.client = chromadb.PersistentClient(
+            path=db_path,
+            settings=Settings(anonymized_telemetry=False)
+        )
 
         self.content_collection = self.client.get_or_create_collection(
             name=content_collection_name,
@@ -89,23 +89,28 @@ class Indexer:
     def __detect_encoding(self, file_path: str) -> str:
         """Detect file encoding using chardet"""
         with open(file_path, 'rb') as f:
-            raw_data = f.read()
+            raw_data = f.read(32 * 1024) # Read first 32KB for speed
             result = chardet.detect(raw_data)
             return result['encoding'] or 'utf-8'
 
-    def __extract_text_content(self, file_path: str) -> str:
-        """Extract content from text files with proper encoding detection"""
+    def __read_file_with_fallback(self, file_path: str) -> str | None:
+        """Reads a file with robust encoding detection and fallback."""
         encoding = self.__detect_encoding(file_path)
         try:
-            with open(file_path, 'r', encoding=encoding) as f:
+            with open(file_path, 'r', encoding=encoding, errors='strict') as f:
                 return f.read()
-        except (UnicodeDecodeError, TypeError):
-            # Fallback to utf-8 with error handling
+        except (UnicodeDecodeError, TypeError, LookupError):
             try:
+                # Fallback to utf-8 with error handling
                 with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
                     return f.read()
-            except Exception:
+            except Exception as e:
+                print(f"Error reading file {file_path} after fallback: {e}")
                 return None
+
+    def __extract_text_content(self, file_path: str) -> str:
+        """Extract content from text files with proper encoding detection"""
+        return self.__read_file_with_fallback(file_path)
 
     def __extract_pdf_content(self, file_path: str) -> str:
         """Extract text content from PDF files"""
@@ -167,11 +172,11 @@ class Indexer:
 
     def __extract_html_content(self, file_path: str) -> str:
         """Extract text content from HTML files"""
+        html_content = self.__read_file_with_fallback(file_path)
+        if not html_content:
+            return None
+        
         try:
-            encoding = self.__detect_encoding(file_path)
-            with open(file_path, 'r', encoding=encoding) as f:
-                html_content = f.read()
-            
             soup = BeautifulSoup(html_content, 'html.parser')
             # Remove script and style elements
             for script in soup(["script", "style"]):
@@ -184,22 +189,22 @@ class Indexer:
             text = '\n'.join(chunk for chunk in chunks if chunk)
             return text
         except Exception as e:
-            print(f"Error extracting HTML content: {e}")
+            print(f"Error parsing HTML content: {e}")
             return None
 
     def __extract_markdown_content(self, file_path: str) -> str:
         """Extract text content from Markdown files"""
+        md_content = self.__read_file_with_fallback(file_path)
+        if not md_content:
+            return None
+        
         try:
-            encoding = self.__detect_encoding(file_path)
-            with open(file_path, 'r', encoding=encoding) as f:
-                md_content = f.read()
-            
             # Convert markdown to HTML then extract text
             html = markdown.markdown(md_content)
             soup = BeautifulSoup(html, 'html.parser')
             return soup.get_text()
         except Exception as e:
-            print(f"Error extracting Markdown content: {e}")
+            print(f"Error parsing Markdown content: {e}")
             return None
 
     def __extract_content(self, file_path: str, mime_type: str) -> str:
@@ -284,30 +289,32 @@ class Indexer:
         
         try:
             metadata = self.__extract_metadata(file_path)
+            file_id = metadata.file_id
 
-            # TODO: check if file already exists in db and hasnt changed since last time
-            if result := self.metadata_collection.get(where={"file_id": metadata.file_id}):
-                # check if file has changed since last index
+            # Check if file has changed since last index
+            if result := self.metadata_collection.get(where={"file_id": file_id}):
+                print("found file in db")
                 print(result)
-                if result["metadatas"] and len(result["metadatas"]) > 0:
+                if result["metadatas"]:
                     existing_metadata = result["metadatas"][0]
                     if existing_metadata["modified_at"] == metadata.modified_at:
                         print(f"No change in: {name}")
                         return False
 
-
-            self.metadata_collection.add(
+            # Upsert metadata. 'upsert' will add if new, update if exists.
+            self.metadata_collection.upsert(
                 documents=[str(metadata)],
                 metadatas=[asdict(metadata)],
-                ids=[f"meta-{metadata.file_id}"]
+                ids=[f"meta-{file_id}"]
             )
 
             content = self.__extract_content(file_path, metadata.mime_type)
             if content:
-                self.content_collection.add(
+                # Upsert content.
+                self.content_collection.upsert(
                     documents=[content],
                     metadatas=[asdict(metadata)],
-                    ids=[f"content-{metadata.file_id}"]
+                    ids=[f"content-{file_id}"]
                 )
 
             # split file into overlapping chunks, will have a seperate entry for each
