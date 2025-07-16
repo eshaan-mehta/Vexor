@@ -1,9 +1,9 @@
 Immediate
 - don't index files on move, just update metadata (don't create duplicate)
-- don't index files if they haven't changed since the last time
 - put initial indexing on background thread
 - search ranking weightedly
 - index answers using file hash
+- on delete doesn't work
 
 
 Improvements

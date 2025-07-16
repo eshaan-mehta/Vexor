@@ -14,18 +14,18 @@
   "database": {
     "type": "chromadb",
     "host": "localhost",
-    "port": 8000,
+    "port": 8001,
     "path": "./chroma",
     "collections": {
       "file_metadata": {
         "name": "file_metadata",
         "embedding_function": "all-MiniLM-L6-v2",
-        "distance_metric": "cosine"
+        "distance_metric": "sine"
       },
       "file_content": {
         "name": "file_content",
         "embedding_function": "all-MiniLM-L6-v2",
-        "distance_metric": "cosine"
+        "distance_metric": "sine"
       }
     },
     "connection_pool": {

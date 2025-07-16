@@ -253,9 +253,9 @@ class Indexer:
         
         name = os.path.basename(file_path)
         
-        # skip hidden files
-        if name.startswith(".") or name.startswith("__"):
-            print(f"\nSkipping hidden file: {name}")
+         # skip hidden files and temporary office files
+        if name.startswith((".", "__", "~$")):
+            print(f"\nSkipping hidden/temporary file: {name}")
             return False
             
         # Skip large files until TODO: chunking (different limits for different file types)
@@ -293,8 +293,6 @@ class Indexer:
 
             # Check if file has changed since last index
             if result := self.metadata_collection.get(where={"file_id": file_id}):
-                print("found file in db")
-                print(result)
                 if result["metadatas"]:
                     existing_metadata = result["metadatas"][0]
                     if existing_metadata["modified_at"] == metadata.modified_at:
@@ -327,6 +325,19 @@ class Indexer:
         except Exception as e:
             print(f"Could not index file: {name}")
             print(f"Error: {e}")
+            return False
+
+    def delete_file(self, file_path: str) -> bool:
+        """Deletes a file's entries from the database based on its path."""
+        try:
+            file_id = self.get_file_hash(file_path)
+            # Deleting from both collections. ChromaDB handles non-existent IDs gracefully.
+            self.metadata_collection.delete(ids=[f"meta-{file_id}"])
+            self.content_collection.delete(ids=[f"content-{file_id}"])
+            print(f"Deleted indexed data for: {file_path}")
+            return True
+        except Exception as e:
+            print(f"Error deleting file {file_path}: {e}")
             return False
 
 

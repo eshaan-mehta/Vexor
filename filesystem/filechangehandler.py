@@ -28,7 +28,7 @@ class FileChangeHandler(FileSystemEventHandler):
         # the process will wait for the file to close before indexing
         # send a signal to the process to start indexing
         # remove the file from the queue
-
+        print(event)
         if not event.is_directory and os.path.isfile(event.src_path):
             current_time = time.time()
             # Check if we've processed this file recently (debouncing)
@@ -45,6 +45,7 @@ class FileChangeHandler(FileSystemEventHandler):
     
     def on_created(self, event: DirCreatedEvent | FileCreatedEvent):
         # TODO: add to index queue
+        print(event)
         if not event.is_directory and os.path.isfile(event.src_path):
             # Wait briefly to ensure file is completely written
             time.sleep(1)
@@ -52,19 +53,18 @@ class FileChangeHandler(FileSystemEventHandler):
             self.indexer.index_file(event.src_path)
     
     def on_moved(self, event: DirMovedEvent | FileMovedEvent):
-        #TODO: only need to update metadata, not re-index
-        # add to index queue
+        print(event)
+
         if not event.is_directory:
             # Handle file rename/move
             print(f"\nFile moved: {event.src_path} -> {event.dest_path}")
-            # Remove old entry
-            doc_id = self.indexer.get_file_hash(event.src_path)
-            # self.indexer.collection.delete(ids=[doc_id])
-            # Add new entry
+            # Delete the old entry and index the new one.
+            self.indexer.delete_file(event.src_path)
             self.indexer.index_file(event.dest_path)
     
     def on_deleted(self, event: DirDeletedEvent | FileDeletedEvent):
+        print(event)
+        
         if not event.is_directory:
             print(f"\nFile deleted: {event.src_path}")
-            doc_id = self.indexer.get_file_hash(event.src_path)
-            # self.indexer.collection.delete(ids=[doc_id])
+            self.indexer.delete_file(event.src_path)
