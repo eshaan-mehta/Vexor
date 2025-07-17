@@ -8,3 +8,11 @@ Immediate
 
 Improvements (Later)
 1 batch update db to save time on indexing (save last batch index incase of failure)
+
+
+Testing
+- test indexing large files
+- test batch processing
+- test file hash
+- test file split
+- test file search with no results
