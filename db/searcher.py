@@ -80,54 +80,57 @@ class Searcher:
     def __merge_results(self, metadata_results, content_results, limit):
         weighted_results = {}
 
+        # Process metadata results
         if metadata_results['ids']:
             for i, file_id in enumerate(metadata_results['ids'][0]):
-                # extract actual file_id from the ID format "meta-{file_id}"
+                # Extract actual file_id from the ID format "meta-{file_id}"
                 file_hash_id = file_id[5:] if file_id.startswith('meta-') else file_id
 
-                metadata = metadata_results['metadatas'][0][i] # type FileMetadata
+                metadata = metadata_results['metadatas'][0][i]
                 distances = metadata_results.get('distances', None)
                 distance = distances[0][i] if distances else 0
 
                 metadata_score = normalize_cosine_distance(distance)
 
-                #TODO: create model for this
                 weighted_results[file_hash_id] = {
-                    "id": file_hash_id,
-                    "metadata": metadata, # contains all file metadata
+                    "file_id": file_hash_id,
+                    "metadata": metadata,
                     "raw_metadata_distance": distance,
-                    "metadata_score": metadata_score*self.metadata_weight,
-                    "raw_content_distance": 1, # orthogonal
-                    "content_score": 0,
-                    "total_score": metadata_score # currently this is unweighted in the event that there is no corresponding match in the content collection
+                    "metadata_score": metadata_score * self.metadata_weight,
+                    "raw_content_distance": 1.0,  # orthogonal (no content match)
+                    "content_score": 0.0,
+                    "total_score": metadata_score * self.metadata_weight
                 }
         
+        # Process content results
         if content_results['ids']:
             for i, file_id in enumerate(content_results['ids'][0]):
                 # Extract actual file_id from the ID format "content-{file_id}"
                 file_hash_id = file_id[8:] if file_id.startswith("content-") else file_id
                 
-                # Get metadata and distance
                 metadata = content_results['metadatas'][0][i]
                 distances = content_results.get('distances', None)
                 distance = distances[0][i] if distances else 0
                 
                 content_score = normalize_cosine_distance(distance)
                 
-                # update existing entry or create new one
-                if (result := weighted_results.get(file_hash_id, None)):
+                # Update existing entry or create new one
+                if file_hash_id in weighted_results:
+                    # Update existing entry with content score
+                    result = weighted_results[file_hash_id]
                     result["content_score"] = content_score * self.content_weight
-                    result["total_score"] = result["metadata_score"] + result["content_score"] # these are weighted scores
                     result["raw_content_distance"] = distance
+                    result["total_score"] = result["metadata_score"] + result["content_score"]
                 else:
+                    # Create new entry (content match only)
                     weighted_results[file_hash_id] = {
                         "file_id": file_hash_id,
                         "metadata": metadata,
-                        "raw_metadata_distance": 1, # orthogonal
-                        "metadata_score": 0,
+                        "raw_metadata_distance": 1.0,  # orthogonal (no metadata match)
+                        "metadata_score": 0.0,
                         "raw_content_distance": distance,
                         "content_score": content_score * self.content_weight,
-                        "total_score": content_score
+                        "total_score": content_score * self.content_weight
                     }
         
         # Sort by total score and return top results
