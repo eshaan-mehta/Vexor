@@ -12,7 +12,7 @@ def main():
     searcher = Searcher() # search engine
 
     print(f"Started indexing directory: {root_dir}")
-    count = indexer.index_directory(root_dir)
+    count = indexer.index_directory(root_dir, cleanup_deleted=True, use_batch=False)
     print(f"Done indexing directory: {root_dir}. Indexed {count} files.")
 
     # Setup file watcher

@@ -1,12 +1,10 @@
 Immediate
-- directory indexing needs to be recursive
-- ability to check if a file has been deletd on first index
-- put initial indexing on background thread
-- index answers using file hash
-- split file into smaller chunks for storage and more granular search
-- put search and indexing workers on background processes/threads
-- create ui
+3 put initial indexing on background thread
+4 index files using file hash
+5 split file into smaller chunks for storage and more granular search
+6 put search and indexing workers on background processes/threads
+7 create ui for mac similar to spotlight search
 
 
-Improvements
-- batch update db to save time on indexing (save last batch index incase of failure)
+Improvements (Later)
+1 batch update db to save time on indexing (save last batch index incase of failure)

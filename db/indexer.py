@@ -2,10 +2,17 @@ import os
 import hashlib
 import mimetypes
 import chromadb
+import threading
+import time
+import json
+import atexit
+import signal
+import sys
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from datetime import datetime
 from dataclasses import asdict
-from typing import Dict, Any, List, Tuple
+from typing import Dict, Any, List, Tuple, Callable, Optional
 from chromadb.config import Settings
 from chromadb.utils.embedding_functions import SentenceTransformerEmbeddingFunction
 from sentence_transformers import SentenceTransformer
@@ -22,16 +29,30 @@ import markdown
 
 from models.filemetadata import FileMetadata
 
-
 class Indexer:
     embedding_function = SentenceTransformerEmbeddingFunction(model_name="all-MiniLM-L6-v2")  
 
     def __init__(self, 
             db_path: str = "./chroma", 
             metadata_collection_name: str = "file_metadata",
-            content_collection_name: str = "file_content"
+            content_collection_name: str = "file_content",
+            batch_size: int = 50
         ):
         os.makedirs(db_path, exist_ok=True)
+        
+        self.db_path = db_path
+        self.batch_size = batch_size
+        self.pending_metadata = [] 
+        self.pending_content = []
+        self.batch_backup_file = os.path.join(db_path, "batch_backup.json")
+        
+        # Register cleanup handlers for graceful shutdown
+        atexit.register(self._emergency_flush)
+        signal.signal(signal.SIGINT, self._signal_handler)
+        signal.signal(signal.SIGTERM, self._signal_handler)
+        
+        # Check for and recover any pending batches from previous crashes
+        self._recover_from_crash()
 
         self.client = chromadb.PersistentClient(
             path=db_path,
@@ -72,7 +93,6 @@ class Indexer:
         if mime_type is None:
             mime_type = "application/octet-stream"  # Default binary type
 
-
         return FileMetadata(
             file_id=self.get_file_hash(file_path),
             name=path.name,
@@ -93,7 +113,7 @@ class Indexer:
             result = chardet.detect(raw_data)
             return result['encoding'] or 'utf-8'
 
-    def __read_file_with_fallback(self, file_path: str) -> str | None:
+    def __read_file(self, file_path: str) -> str | None:
         """Reads a file with robust encoding detection and fallback."""
         encoding = self.__detect_encoding(file_path)
         try:
@@ -110,7 +130,7 @@ class Indexer:
 
     def __extract_text_content(self, file_path: str) -> str:
         """Extract content from text files with proper encoding detection"""
-        return self.__read_file_with_fallback(file_path)
+        return self.__read_file(file_path)
 
     def __extract_pdf_content(self, file_path: str) -> str:
         """Extract text content from PDF files"""
@@ -172,7 +192,7 @@ class Indexer:
 
     def __extract_html_content(self, file_path: str) -> str:
         """Extract text content from HTML files"""
-        html_content = self.__read_file_with_fallback(file_path)
+        html_content = self.__read_file(file_path)
         if not html_content:
             return None
         
@@ -194,7 +214,7 @@ class Indexer:
 
     def __extract_markdown_content(self, file_path: str) -> str:
         """Extract text content from Markdown files"""
-        md_content = self.__read_file_with_fallback(file_path)
+        md_content = self.__read_file(file_path)
         if not md_content:
             return None
         
@@ -247,7 +267,7 @@ class Indexer:
             print(f"Unsupported file type: {mime_type} for {file_path}")
             return None
 
-    def index_file(self, file_path: str, should_commit: bool = True) -> bool:
+    def index_file(self, file_path: str, use_batch: bool = False) -> bool:
         if os.path.isdir(file_path) or not os.path.exists(file_path):
             return False
         
@@ -299,21 +319,29 @@ class Indexer:
                         print(f"No change in: {name}")
                         return False
 
-            # Upsert metadata. 'upsert' will add if new, update if exists.
-            self.metadata_collection.upsert(
-                documents=[str(metadata)],
-                metadatas=[asdict(metadata)],
-                ids=[f"meta-{file_id}"]
-            )
-
             content = self.__extract_content(file_path, metadata.mime_type)
-            if content:
-                # Upsert content.
-                self.content_collection.upsert(
-                    documents=[content],
+            
+            if use_batch:
+                # Add to batch for later processing
+                self._add_to_batch(metadata, content)
+                
+                # Check if we should flush the batch
+                if len(self.pending_metadata) >= self.batch_size:
+                    self._flush_batch()
+            else:
+                # Process immediately (for single file operations)
+                self.metadata_collection.upsert(
+                    documents=[str(metadata)],
                     metadatas=[asdict(metadata)],
-                    ids=[f"content-{file_id}"]
+                    ids=[f"meta-{file_id}"]
                 )
+
+                if content:
+                    self.content_collection.upsert(
+                        documents=[content],
+                        metadatas=[asdict(metadata)],
+                        ids=[f"content-{file_id}"]
+                    )
 
             # split file into overlapping chunks, will have a seperate entry for each
             # generate hash for each chunk
@@ -340,22 +368,198 @@ class Indexer:
             print(f"Error deleting file {file_path}: {e}")
             return False
 
+    def cleanup_deleted_files(self) -> int:
+        """Remove entries for files that no longer exist on disk."""
+        deleted_count = 0
+        
+        try:
+            # Get all metadata entries
+            all_metadata = self.metadata_collection.get()
+            
+            if not all_metadata['metadatas']:
+                print("No files in database to check")
+                return 0
+            
+            print(f"Checking {len(all_metadata['metadatas'])} files for deletion...")
+            
+            for metadata in all_metadata['metadatas']:
+                file_path = metadata.get('path')
+                if file_path and not os.path.exists(file_path):
+                    print(f"File no longer exists: {file_path}")
+                    if self.delete_file(file_path):
+                        deleted_count += 1
+            
+            if deleted_count > 0:
+                print(f"Cleaned up {deleted_count} deleted files from database")
+            else:
+                print("No deleted files found in database")
+                
+        except Exception as e:
+            print(f"Error during cleanup: {e}")
+        
+        return deleted_count
 
-    def index_directory(self, root_dir: str) -> int:
+    def _add_to_batch(self, metadata: FileMetadata, content: str = None):
+        """Add items to batch for later processing"""
+        file_id = metadata.file_id
+        
+        # Add metadata to batch
+        self.pending_metadata.append({
+            'document': str(metadata),
+            'metadata': asdict(metadata),
+            'id': f"meta-{file_id}"
+        })
+        
+        # Add content to batch if available
+        if content:
+            self.pending_content.append({
+                'document': content,
+                'metadata': asdict(metadata),
+                'id': f"content-{file_id}"
+            })
+        
+        # Backup batch to disk for crash recovery
+        self._backup_batch()
+
+    def _flush_batch(self):
+        """Process all pending batch items"""
+        if self.pending_metadata:
+            print(f"Flushing {len(self.pending_metadata)} metadata items...")
+            
+            # Prepare batch data
+            documents = [item['document'] for item in self.pending_metadata]
+            metadatas = [item['metadata'] for item in self.pending_metadata]
+            ids = [item['id'] for item in self.pending_metadata]
+            
+            # Batch upsert metadata
+            self.metadata_collection.upsert(
+                documents=documents,
+                metadatas=metadatas,
+                ids=ids
+            )
+            self.pending_metadata.clear()
+        
+        if self.pending_content:
+            print(f"Flushing {len(self.pending_content)} content items...")
+            
+            # Prepare batch data
+            documents = [item['document'] for item in self.pending_content]
+            metadatas = [item['metadata'] for item in self.pending_content]
+            ids = [item['id'] for item in self.pending_content]
+            
+            # Batch upsert content
+            self.content_collection.upsert(
+                documents=documents,
+                metadatas=metadatas,
+                ids=ids
+            )
+            self.pending_content.clear()
+
+    def index_directory(self, root_dir: str, cleanup_deleted: bool = True, use_batch: bool = False) -> int:
         if not os.path.exists(root_dir):
             raise FileNotFoundError(f"Directory not found: {root_dir}")
 
-        # loop through dirs checking all subdirs
-        count = 0
-        for path, dirs, files in os.walk(root_dir):
-            for file in files:
-                file_path = os.path.join(path, file)
-                try:
-                    success = self.index_file(file_path, should_commit=True)
-                    if success:
-                        count += 1
-                    
-                except Exception as e:
-                    print(f"Exception indexing {file_path}: {e}")
+        # First, clean up deleted files if requested
+        if cleanup_deleted:
+            print("Checking for deleted files...")
+            deleted_count = self.cleanup_deleted_files()
+            if deleted_count > 0:
+                print(f"Removed {deleted_count} deleted files from database")
 
+        # Recursively loop through all subdirectories using batch processing
+        count = 0
+        print(f"Starting directory indexing for: {root_dir}")
+        
+        try:
+            for path, dirs, files in os.walk(root_dir):
+                for file in files:
+                    file_path = os.path.join(path, file)
+                    try:
+                        success = self.index_file(file_path, use_batch=use_batch)
+                        if success:
+                            count += 1
+                        
+                    except Exception as e:
+                        print(f"Exception indexing {file_path}: {e}")
+        finally:
+            # Always flush remaining batch items at the end
+            if use_batch:
+                print("Flushing remaining batch items...")
+                self._flush_batch()
+        
+        print(f"Directory indexing complete. Indexed {count} files from {root_dir}")
         return count
+
+    def _backup_batch(self):
+        """Backup current batch to disk for crash recovery"""
+        if not self.pending_metadata and not self.pending_content:
+            # No pending items, remove backup file if it exists
+            if os.path.exists(self.batch_backup_file):
+                os.remove(self.batch_backup_file)
+            return
+            
+        try:
+            backup_data = {
+                'timestamp': datetime.now().isoformat(),
+                'pending_metadata': self.pending_metadata,
+                'pending_content': self.pending_content
+            }
+            
+            with open(self.batch_backup_file, 'w') as f:
+                json.dump(backup_data, f, indent=2)
+                
+        except Exception as e:
+            print(f"Warning: Could not backup batch data: {e}")
+
+    def _recover_from_crash(self):
+        """Recover and process any pending batches from previous crashes"""
+        if not os.path.exists(self.batch_backup_file):
+            return
+            
+        try:
+            print("Found batch backup file from previous session...")
+            
+            with open(self.batch_backup_file, 'r') as f:
+                backup_data = json.load(f)
+            
+            # Restore pending batches
+            self.pending_metadata = backup_data.get('pending_metadata', [])
+            self.pending_content = backup_data.get('pending_content', [])
+            
+            if self.pending_metadata or self.pending_content:
+                print(f"Recovering {len(self.pending_metadata)} metadata and {len(self.pending_content)} content items...")
+                
+                # Process the recovered batch
+                self._flush_batch()
+                print("Successfully recovered and processed pending batch items")
+            
+            # Clean up backup file
+            os.remove(self.batch_backup_file)
+            
+        except Exception as e:
+            print(f"Error recovering from crash: {e}")
+            # If recovery fails, clear the backup file to prevent repeated errors
+            try:
+                os.remove(self.batch_backup_file)
+            except:
+                pass
+
+    def _emergency_flush(self):
+        """Emergency flush called during shutdown"""
+        try:
+            if self.pending_metadata or self.pending_content:
+                print("Emergency flush: Processing pending batch items...")
+                self._flush_batch()
+                
+                # Clean up backup file after successful flush
+                if os.path.exists(self.batch_backup_file):
+                    os.remove(self.batch_backup_file)
+                    
+        except Exception as e:
+            print(f"Error during emergency flush: {e}")
+
+    def _signal_handler(self, signum, frame):
+        """Handle shutdown signals gracefully"""
+        print(f"\nReceived signal {signum}, performing emergency flush...")
+        self._emergency_flush()
+        sys.exit(0)
