@@ -102,7 +102,7 @@ def run_queue_tests():
     print("🔧 FILE PROCESSING QUEUE TESTS")
     
     # Import and run tests
-    from tests.test_queue_manager import TestFileProcessingQueue
+    from tests.test_file_processing_queue import TestFileProcessingQueue
     
     # Create test suite
     loader = unittest.TestLoader()
