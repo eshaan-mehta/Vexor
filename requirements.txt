@@ -10,3 +10,10 @@ beautifulsoup4==4.12.2 # HTML/XML files
 markdown==3.5.1        # Markdown files
 python-magic==0.4.27   # Better file type detection
 chardet==5.2.0         # Character encoding detection
+
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+pydantic>=2.0.0
+python-multipart>=0.0.6
+pytest>=7.0.0
+pytest-asyncio>=0.21.0

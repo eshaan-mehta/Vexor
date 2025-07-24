@@ -46,15 +46,49 @@
       "default": "10MB"
     },
     "supported_extensions": [
-      ".txt", ".md", ".html", ".htm", ".xml",
-      ".py", ".js", ".ts", ".jsx", ".tsx",
-      ".java", ".cpp", ".c", ".h", ".cs",
-      ".php", ".rb", ".go", ".rs", ".swift",
-      ".kt", ".scala", ".css", ".scss", ".sass",
-      ".less", ".json", ".yaml", ".yml",
-      ".ini", ".cfg", ".conf", ".log", ".sql",
-      ".sh", ".bash", ".zsh", ".csv", ".tsv",
-      ".pdf", ".docx", ".xlsx", ".pptx"
+      ".txt",
+      ".md",
+      ".html",
+      ".htm",
+      ".xml",
+      ".py",
+      ".js",
+      ".ts",
+      ".jsx",
+      ".tsx",
+      ".java",
+      ".cpp",
+      ".c",
+      ".h",
+      ".cs",
+      ".php",
+      ".rb",
+      ".go",
+      ".rs",
+      ".swift",
+      ".kt",
+      ".scala",
+      ".css",
+      ".scss",
+      ".sass",
+      ".less",
+      ".json",
+      ".yaml",
+      ".yml",
+      ".ini",
+      ".cfg",
+      ".conf",
+      ".log",
+      ".sql",
+      ".sh",
+      ".bash",
+      ".zsh",
+      ".csv",
+      ".tsv",
+      ".pdf",
+      ".docx",
+      ".xlsx",
+      ".pptx"
     ],
     "exclude_patterns": [
       ".git/**",
@@ -180,11 +214,7 @@
     "health_check": {
       "enabled": true,
       "endpoint": "/health",
-      "checks": [
-        "database_connection",
-        "disk_space",
-        "memory_usage"
-      ]
+      "checks": ["database_connection", "disk_space", "memory_usage"]
     },
     "alerts": {
       "enabled": false,
@@ -287,4 +317,4 @@
       "target_cpu_utilization": 70
     }
   }
-} 
+}
