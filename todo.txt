@@ -1,8 +1,7 @@
 Immediate
-3 put initial indexing on background thread
 4 index files using file hash
 5 split file into smaller chunks for storage and more granular search
-6 put search and indexing workers on background processes/threads
+6 put search workers on background processes/threads
 7 create ui for mac similar to spotlight search
 
 
@@ -12,7 +11,6 @@ Improvements (Later)
 
 Testing
 - test indexing large files
-- test batch processing
 - test file hash
 - test file split
 - test file search with no results
