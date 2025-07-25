@@ -29,8 +29,17 @@ import markdown
 
 from models.filemetadata import FileMetadata
 from .file_processing_queue import FileTask, TaskType
+from enum import Enum
 
 logger = logging.getLogger(__name__)
+
+class ProcessingStatus(Enum):
+    """Status of file processing operations."""
+    SUCCESS = "success"
+    SKIPPED = "skipped"
+    HIDDEN = "hidden"
+    LARGE = "large"
+    FAILURE = "failure"
 
 class FileProcessor:
     """
@@ -39,7 +48,6 @@ class FileProcessor:
     This class contains the logic for indexing, deleting, and moving files
     that worker threads will use to process tasks from the queue.
     """
-    embedding_function = SentenceTransformerEmbeddingFunction(model_name="all-MiniLM-L6-v2")
     
     def __init__(self, db_path: str = "./chroma", 
                  metadata_collection_name: str = "file_metadata",
@@ -60,6 +68,9 @@ class FileProcessor:
             path=db_path,
             settings=Settings(anonymized_telemetry=False)
         )
+        
+        # Create embedding function per instance to avoid sharing resources
+        self.embedding_function = SentenceTransformerEmbeddingFunction(model_name="all-MiniLM-L6-v2")
         
         self.content_collection = self.client.get_or_create_collection(
             name=content_collection_name,
@@ -85,7 +96,28 @@ class FileProcessor:
         
         logger.info("FileProcessor initialized")
     
-    def process_task(self, task: FileTask) -> bool:
+    def cleanup(self):
+        """Clean up resources to prevent semaphore leaks."""
+        try:
+            # Close ChromaDB client if it has a close method
+            if hasattr(self.client, 'close'):
+                self.client.close()
+            
+            # Clean up embedding function if it has cleanup methods
+            if hasattr(self.embedding_function, 'cleanup'):
+                self.embedding_function.cleanup()
+            elif hasattr(self.embedding_function, 'close'):
+                self.embedding_function.close()
+                
+            logger.debug("FileProcessor resources cleaned up")
+        except Exception as e:
+            logger.error(f"Error during FileProcessor cleanup: {e}")
+    
+    def __del__(self):
+        """Destructor to ensure cleanup on garbage collection."""
+        self.cleanup()
+    
+    def process_task(self, task: FileTask) -> ProcessingStatus:
         """
         Process a file task based on its type.
         
@@ -93,38 +125,38 @@ class FileProcessor:
             task: FileTask to process
             
         Returns:
-            bool: True if task was processed successfully
+            ProcessingStatus: Status of the processing operation
         """
         try:
-            if task.task_type == TaskType.INDEX_FILE:
+            if task.task_type == TaskType.INDEX_FILE or task.task_type == TaskType.UPDATE_FILE:
                 return self._index_file(task.file_path)
             elif task.task_type == TaskType.DELETE_FILE:
-                return self._delete_file(task.file_path)
+                return ProcessingStatus.SUCCESS if self._delete_file(task.file_path) else ProcessingStatus.FAILURE
             elif task.task_type == TaskType.MOVE_FILE:
-                return self._move_file(task)
+                return ProcessingStatus.SUCCESS if self._move_file(task) else ProcessingStatus.FAILURE
             else:
                 logger.error(f"Unknown task type: {task.task_type}")
-                return False
+                return ProcessingStatus.FAILURE
                 
         except Exception as e:
             logger.error(f"Error processing task {task.task_type} for {task.file_path}: {e}")
-            return False
+            return ProcessingStatus.FAILURE
     
-    def _index_file(self, file_path: str) -> bool:
+    def _index_file(self, file_path: str) -> ProcessingStatus:
         """Index a single file."""
         if not os.path.exists(file_path) or os.path.isdir(file_path):
             logger.warning(f"File does not exist or is directory: {file_path}")
-            return False
+            return ProcessingStatus.FAILURE
         
         # Skip hidden files and temporary files
         name = os.path.basename(file_path)
         if name.startswith((".", "__", "~$")):
             logger.debug(f"Skipping hidden/temporary file: {name}")
-            return False
+            return ProcessingStatus.HIDDEN
         
         # Check file size limits
         if not self._check_file_size(file_path):
-            return False
+            return ProcessingStatus.LARGE
         
         try:
             # Extract metadata
@@ -134,7 +166,7 @@ class FileProcessor:
             # Check if file has changed since last index
             if self._file_unchanged(file_id, metadata.modified_at):
                 logger.debug(f"File unchanged: {name}")
-                return True
+                return ProcessingStatus.SKIPPED
             
             # Extract content
             content = self._extract_content(file_path, metadata.mime_type)
@@ -155,22 +187,33 @@ class FileProcessor:
                 )
             
             logger.debug(f"Indexed file: {name}")
-            return True
+            return ProcessingStatus.SUCCESS
             
         except Exception as e:
             logger.error(f"Error indexing file {file_path}: {e}")
-            return False
+            return ProcessingStatus.FAILURE
     
     def _delete_file(self, file_path: str) -> bool:
         """Delete a file from the index."""
         try:
             file_id = self._get_file_hash(file_path)
             
-            # Delete from both collections
-            self.metadata_collection.delete(ids=[f"meta-{file_id}"])
-            self.content_collection.delete(ids=[f"content-{file_id}"])
+            # Check if the file exists in metadata collection before deleting
+            try:
+                existing = self.metadata_collection.get(ids=[f"meta-{file_id}"])
+                if existing["ids"]:
+                    # Delete from both collections only if it exists
+                    self.metadata_collection.delete(ids=[f"meta-{file_id}"])
+                    self.content_collection.delete(ids=[f"content-{file_id}"])
+                    logger.debug(f"Deleted file from index: {file_path}")
+                else:
+                    logger.debug(f"File not in index, skipping deletion: {file_path}")
+            except Exception:
+                # If get() fails, try to delete anyway (might exist in content but not metadata)
+                self.metadata_collection.delete(ids=[f"meta-{file_id}"])
+                self.content_collection.delete(ids=[f"content-{file_id}"])
+                logger.debug(f"Attempted deletion of file from index: {file_path}")
             
-            logger.debug(f"Deleted file from index: {file_path}")
             return True
             
         except Exception as e:

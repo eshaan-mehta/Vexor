@@ -11,29 +11,41 @@ from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from db.indexer import Indexer
 from db.searcher import Searcher
 
-from processing.file_processor import FileProcessor
+from processing.file_processor import FileProcessor, ProcessingStatus
 from processing.file_processing_queue import FileProcessingQueue, FileTask, TaskType
 
 from filesystem.filechangehandler import FileChangeHandler
 from watchdog.observers import Observer
 
+from utils.logging_utils import thread_safe_print, get_print_lock
+from utils.worker_utils import start_file_processing_workers, stop_file_processing_workers
+
 # Global instances
 file_processing_queue = None
 file_processing_workers = []
+print_lock = get_print_lock()  # Get the global print lock from utils
 searcher = None
 file_observer = None
 search_executor = None
 indexing_executor = None
 current_directory = None
 indexing_progress = {
-    "is_indexing": False,
-    "current_file": None,
-    "files_processed": 0,
-    "total_files": 0,
+    "isIndexing": False,
+    "currentFile": None,
+    "filesProcessed": 0,
+    "totalFiles": 0,
     "progress": 0.0
+}
+
+# Status tracking for detailed reporting
+processing_stats = {
+    "success": 0,
+    "skipped": 0,
+    "hidden": 0,
+    "large": 0,
+    "failure": 0
 }
 
 # Pydantic models for API
@@ -67,7 +79,7 @@ class IndexingProgress(BaseModel):
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
-    global file_processing_queue, file_processing_workers, searcher, search_executor, indexing_executor
+    global file_processing_queue, file_processing_workers, processing_stats, searcher, search_executor, indexing_executor, file_observer, current_directory
     
     print("Starting FastAPI backend...")
     
@@ -76,7 +88,12 @@ async def lifespan(app: FastAPI):
     searcher = Searcher()
     
     # Start file processing workers
-    start_file_processing_workers(num_workers=4)
+    start_file_processing_workers(
+        file_processing_queue=file_processing_queue,
+        file_processing_workers=file_processing_workers,
+        processing_stats=processing_stats,
+        num_workers=4
+    )
     
     # Create thread pools
     search_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="search")
@@ -102,13 +119,69 @@ async def lifespan(app: FastAPI):
         file_observer.join()
     
     if file_processing_queue:
-        stop_file_processing_workers()
+        stop_file_processing_workers(
+            file_processing_queue=file_processing_queue,
+            file_processing_workers=file_processing_workers
+        )
+        # Give time for cleanup
+        time.sleep(0.5)
     
     if search_executor:
         search_executor.shutdown(wait=True)
     
     if indexing_executor:
         indexing_executor.shutdown(wait=True)
+    
+    # Explicit cleanup for all components that might have resources
+    try:
+        print("Cleaning up resources...")
+        
+        # Clean up searcher
+        if searcher:
+            try:
+                searcher.cleanup()
+                print("Searcher cleaned up")
+            except Exception as e:
+                print(f"Error cleaning up searcher: {e}")
+        
+        # Clean up file processing queue
+        if file_processing_queue:
+            try:
+                file_processing_queue.cleanup()
+                print("File processing queue cleaned up")
+            except Exception as e:
+                print(f"Error cleaning up file processing queue: {e}")
+        
+        # Clean up file observer
+        if file_observer:
+            try:
+                if hasattr(file_observer, 'cleanup'):
+                    file_observer.cleanup()
+                print("File observer cleaned up")
+            except Exception as e:
+                print(f"Error cleaning up file observer: {e}")
+        
+        # Clear all global references to trigger __del__ methods
+        searcher = None
+        file_processing_queue = None
+        file_observer = None
+        search_executor = None
+        indexing_executor = None
+        
+        # Clear worker list
+        file_processing_workers.clear()
+        
+        # Force garbage collection to ensure all __del__ methods are called
+        import gc
+        gc.collect()
+        
+        print("All resources cleaned up")
+        
+    except Exception as e:
+        print(f"Error during resource cleanup: {e}")
+        # Still try garbage collection even if cleanup failed
+        import gc
+        gc.collect()
     
     print("FastAPI backend shutdown complete")
 
@@ -128,63 +201,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-def start_file_processing_workers(num_workers: int = 4):
-    """Start file processing worker threads."""
-    global file_processing_workers, file_processing_queue
-    
-    print(f"Starting {num_workers} file processing workers...")
-    
-    for i in range(num_workers):
-        worker = threading.Thread(
-            target=file_processing_worker_loop,
-            name=f"FileProcessor-{i}",
-            daemon=True
-        )
-        worker.start()
-        file_processing_workers.append(worker)
-    
-    print(f"Started {len(file_processing_workers)} file processing workers")
 
-def stop_file_processing_workers():
-    """Stop all file processing worker threads gracefully."""
-    global file_processing_workers, file_processing_queue
-    
-    print("Stopping file processing workers...")
-    
-    if file_processing_queue:
-        file_processing_queue.shutdown()
-    
-    # Wait for all workers to finish
-    for worker in file_processing_workers:
-        worker.join(timeout=5.0)
-    
-    file_processing_workers.clear()
-    print("File processing workers stopped")
-
-def file_processing_worker_loop():
-    """Main loop for file processing worker threads."""
-    global file_processing_queue
-    
-    # Each worker gets its own FileProcessor instance
-    processor = FileProcessor()
-    worker_name = threading.current_thread().name
-    
-    print(f"Worker {worker_name} started")
-    
-    while not file_processing_queue.is_shutdown():
-        task = file_processing_queue.get_task(timeout=1.0)
-        if task is None:
-            continue
-        
-        try:
-            success = processor.process_task(task)
-            file_processing_queue.task_completed(task, success)
-            
-        except Exception as e:
-            print(f"Worker {worker_name} error processing {task.file_path}: {e}")
-            file_processing_queue.task_completed(task, False)
-    
-    print(f"Worker {worker_name} stopped")
 
 def search_files_sync(query: str, limit: int = 10) -> List[dict]:
     """Synchronous search function to run in thread pool"""
@@ -197,16 +214,27 @@ def search_files_sync(query: str, limit: int = 10) -> List[dict]:
 
 def index_directory_sync(directory_path: str):
     """Synchronous directory indexing function to run in thread pool"""
-    global indexing_progress, file_observer, current_directory, file_processing_queue
+    global indexing_progress, file_observer, current_directory, file_processing_queue, processing_stats
     
     try:
+        # Reset progress and stats
         indexing_progress.update({
-            "is_indexing": True,
-            "current_file": None,
-            "files_processed": 0,
-            "total_files": 0,
+            "isIndexing": True,
+            "currentFile": None,
+            "filesProcessed": 0,
+            "totalFiles": 0,
             "progress": 0.0
         })
+        
+        # Reset processing stats
+        with print_lock:
+            processing_stats.update({
+                "success": 0,
+                "skipped": 0,
+                "hidden": 0,
+                "large": 0,
+                "failure": 0
+            })
         
         print(f"Starting indexing of directory: {directory_path}")
         
@@ -227,7 +255,7 @@ def index_directory_sync(directory_path: str):
                 file_processing_queue.add_task(task)
                 files_added += 1
         
-        indexing_progress["total_files"] = files_added
+        indexing_progress["totalFiles"] = files_added
         print(f"Added {files_added} files to processing queue")
         
         # Wait for all tasks to complete and track progress
@@ -240,7 +268,7 @@ def index_directory_sync(directory_path: str):
             progress = total_completed / files_added if files_added > 0 else 1.0
             
             indexing_progress.update({
-                "files_processed": total_completed,
+                "filesProcessed": total_completed,
                 "progress": progress
             })
             
@@ -253,10 +281,10 @@ def index_directory_sync(directory_path: str):
         # Final progress update
         final_progress = file_processing_queue.get_progress()
         indexing_progress.update({
-            "is_indexing": False,
-            "current_file": None,
-            "files_processed": final_progress['total_processed'],
-            "total_files": files_added,
+            "isIndexing": False,
+            "currentFile": None,
+            "filesProcessed": final_progress['total_processed'],
+            "totalFiles": files_added,
             "progress": 1.0
         })
         
@@ -268,15 +296,26 @@ def index_directory_sync(directory_path: str):
         
         current_directory = directory_path
         final_stats = file_processing_queue.get_progress()
-        print(f"Completed processing {final_stats['total_processed']} files from {directory_path} ({final_stats['total_failed']} failed)")
+        
+        # Print detailed completion stats
+        with print_lock:
+            stats_copy = processing_stats.copy()
+        
+        print(f"Completed processing {final_stats['total_processed']} files from {directory_path}")
+        print(f"  SUCCESS: {stats_copy['success']} files indexed")
+        print(f"  SKIPPED: {stats_copy['skipped']} files (unchanged since last index)")
+        print(f"  LARGE:   {stats_copy['large']} files (too large to process)")
+        print(f"  HIDDEN:  {stats_copy['hidden']} files (hidden/temporary)")
+        print(f"  FAILURE: {stats_copy['failure']} files (errors during processing)")
+        print(f"  TOTAL:   {sum(stats_copy.values())} files processed")
         
     except Exception as e:
         print(f"Indexing error: {e}")
         indexing_progress.update({
-            "is_indexing": False,
-            "current_file": None,
-            "files_processed": 0,
-            "total_files": 0,
+            "isIndexing": False,
+            "currentFile": None,
+            "filesProcessed": 0,
+            "totalFiles": 0,
             "progress": 0.0
         })
 
@@ -337,7 +376,7 @@ async def health_check():
         "status": "healthy",
         "timestamp": datetime.now().isoformat(),
         "services": {
-            "file_processing_queue": file_processing_queue is not None and file_processing_queue.is_running(),
+            "file_processing_queue": file_processing_queue is not None and not file_processing_queue.is_shutdown(),
             "searcher": searcher is not None,
             "file_watcher": file_observer is not None and file_observer.is_alive() if file_observer else False
         }

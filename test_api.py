@@ -34,7 +34,7 @@ def test_search():
     """Test search endpoint"""
     try:
         search_data = {
-            "query": "test",
+            "query": "stories about spaceships",
             "limit": 5
         }
         response = requests.post(f"{BASE_URL}/search", json=search_data)

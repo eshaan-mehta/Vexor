@@ -1,16 +1,15 @@
 Immediate
+1 after indexing, only leave one indexing thread running
 4 index files using file hash
 5 split file into smaller chunks for storage and more granular search
-6 put search workers on background processes/threads
 7 create ui for mac similar to spotlight search
 
-
 Improvements (Later)
-1 batch update db to save time on indexing (save last batch index incase of failure)
+- what happens if a worker takes a file to index but fails.
 
 
 Testing
+- ensure indexing doesnt' take to long since a file could change/be 
+added in the mean time and it would be out of sync
 - test indexing large files
 - test file hash
-- test file split
-- test file search with no results
