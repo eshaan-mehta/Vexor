@@ -2,11 +2,11 @@ import os
 from watchdog.events import FileSystemEventHandler
 from watchdog.events import DirModifiedEvent, FileModifiedEvent, DirCreatedEvent, FileCreatedEvent, DirMovedEvent, FileMovedEvent, DirDeletedEvent, FileDeletedEvent
 import time
-from db.indexer import Indexer
+from processing.file_processing_queue import FileProcessingQueue, FileTask, TaskType
 
 class FileChangeHandler(FileSystemEventHandler):
-    def __init__(self, indexer: Indexer):
-        self.indexer = indexer
+    def __init__(self, file_processing_queue: FileProcessingQueue):
+        self.file_processing_queue = file_processing_queue
         self.last_modified_times = {} # map store previous modification times for debouncing
         self.debounce_time = 2  # seconds to wait before processing a change
     
@@ -40,8 +40,12 @@ class FileChangeHandler(FileSystemEventHandler):
             print(f"\nFile modified: {event.src_path}")
             # Wait until the file is closed before indexing
             if self.__wait_until_file_is_closed(event.src_path):
-                print("File is closed, indexing...")
-                self.indexer.index_file(event.src_path)
+                print("File is closed, adding to queue...")
+                task = FileTask(
+                    task_type=TaskType.INDEX_FILE,
+                    file_path=event.src_path
+                )
+                self.file_processing_queue.add_task(task)
     
     def on_created(self, event: DirCreatedEvent | FileCreatedEvent):
         # TODO: add to index queue
@@ -50,7 +54,11 @@ class FileChangeHandler(FileSystemEventHandler):
             # Wait briefly to ensure file is completely written
             time.sleep(1)
             print(f"\nFile created: {event.src_path}")
-            self.indexer.index_file(event.src_path)
+            task = FileTask(
+                task_type=TaskType.INDEX_FILE,
+                file_path=event.src_path
+            )
+            self.file_processing_queue.add_task(task)
     
     def on_moved(self, event: DirMovedEvent | FileMovedEvent):
         print(event)
@@ -58,13 +66,24 @@ class FileChangeHandler(FileSystemEventHandler):
         if not event.is_directory:
             # Handle file rename/move
             print(f"\nFile moved: {event.src_path} -> {event.dest_path}")
-            # Delete the old entry and index the new one.
-            self.indexer.delete_file(event.src_path)
-            self.indexer.index_file(event.dest_path)
+            # Create a move task with metadata
+            task = FileTask(
+                task_type=TaskType.MOVE_FILE,
+                file_path=event.dest_path,
+                metadata={
+                    'old_path': event.src_path,
+                    'new_path': event.dest_path
+                }
+            )
+            self.file_processing_queue.add_task(task)
     
     def on_deleted(self, event: DirDeletedEvent | FileDeletedEvent):
         print(event)
         
         if not event.is_directory:
             print(f"\nFile deleted: {event.src_path}")
-            self.indexer.delete_file(event.src_path)
+            task = FileTask(
+                task_type=TaskType.DELETE_FILE,
+                file_path=event.src_path
+            )
+            self.file_processing_queue.add_task(task)

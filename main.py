@@ -1,6 +1,7 @@
 import os
 import asyncio
 import threading
+import time
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
 from typing import List, Optional
@@ -12,11 +13,16 @@ from pydantic import BaseModel
 
 from db.indexer import Indexer
 from db.searcher import Searcher
+
+from processing.file_processor import FileProcessor
+from processing.file_processing_queue import FileProcessingQueue, FileTask, TaskType
+
 from filesystem.filechangehandler import FileChangeHandler
 from watchdog.observers import Observer
 
 # Global instances
-indexer = None
+file_processing_queue = None
+file_processing_workers = []
 searcher = None
 file_observer = None
 search_executor = None
@@ -61,13 +67,16 @@ class IndexingProgress(BaseModel):
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
-    global indexer, searcher, search_executor, indexing_executor
+    global file_processing_queue, file_processing_workers, searcher, search_executor, indexing_executor
     
     print("Starting FastAPI backend...")
     
     # Initialize components
-    indexer = Indexer()
+    file_processing_queue = FileProcessingQueue()
     searcher = Searcher()
+    
+    # Start file processing workers
+    start_file_processing_workers(num_workers=4)
     
     # Create thread pools
     search_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="search")
@@ -76,7 +85,10 @@ async def lifespan(app: FastAPI):
     # Set default directory and start indexing
     default_dir = os.path.abspath("./test-files")
     if os.path.exists(default_dir):
-        await set_directory_internal(default_dir)
+        print(f"Starting initial indexing of {default_dir}...")
+        # Run initial indexing synchronously during startup
+        index_directory_sync(default_dir)
+        print("Initial indexing completed, application ready")
     
     print("FastAPI backend started successfully")
     
@@ -88,6 +100,9 @@ async def lifespan(app: FastAPI):
     if file_observer:
         file_observer.stop()
         file_observer.join()
+    
+    if file_processing_queue:
+        stop_file_processing_workers()
     
     if search_executor:
         search_executor.shutdown(wait=True)
@@ -113,6 +128,64 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+def start_file_processing_workers(num_workers: int = 4):
+    """Start file processing worker threads."""
+    global file_processing_workers, file_processing_queue
+    
+    print(f"Starting {num_workers} file processing workers...")
+    
+    for i in range(num_workers):
+        worker = threading.Thread(
+            target=file_processing_worker_loop,
+            name=f"FileProcessor-{i}",
+            daemon=True
+        )
+        worker.start()
+        file_processing_workers.append(worker)
+    
+    print(f"Started {len(file_processing_workers)} file processing workers")
+
+def stop_file_processing_workers():
+    """Stop all file processing worker threads gracefully."""
+    global file_processing_workers, file_processing_queue
+    
+    print("Stopping file processing workers...")
+    
+    if file_processing_queue:
+        file_processing_queue.shutdown()
+    
+    # Wait for all workers to finish
+    for worker in file_processing_workers:
+        worker.join(timeout=5.0)
+    
+    file_processing_workers.clear()
+    print("File processing workers stopped")
+
+def file_processing_worker_loop():
+    """Main loop for file processing worker threads."""
+    global file_processing_queue
+    
+    # Each worker gets its own FileProcessor instance
+    processor = FileProcessor()
+    worker_name = threading.current_thread().name
+    
+    print(f"Worker {worker_name} started")
+    
+    while not file_processing_queue.is_shutdown():
+        task = file_processing_queue.get_task(timeout=1.0)
+        if task is None:
+            continue
+        
+        try:
+            success = processor.process_task(task)
+            file_processing_queue.task_completed(task, success)
+            
+        except Exception as e:
+            print(f"Worker {worker_name} error processing {task.file_path}: {e}")
+            file_processing_queue.task_completed(task, False)
+    
+    print(f"Worker {worker_name} stopped")
+
 def search_files_sync(query: str, limit: int = 10) -> List[dict]:
     """Synchronous search function to run in thread pool"""
     try:
@@ -124,7 +197,7 @@ def search_files_sync(query: str, limit: int = 10) -> List[dict]:
 
 def index_directory_sync(directory_path: str):
     """Synchronous directory indexing function to run in thread pool"""
-    global indexing_progress, file_observer, current_directory
+    global indexing_progress, file_observer, current_directory, file_processing_queue
     
     try:
         indexing_progress.update({
@@ -142,26 +215,60 @@ def index_directory_sync(directory_path: str):
             file_observer.stop()
             file_observer.join()
         
-        # Index directory
-        count = indexer.index_directory(directory_path, cleanup_deleted=True, use_batch=True)
+        # Walk directory and add ALL files to queue (let workers decide what to process)
+        files_added = 0
+        for root, dirs, files in os.walk(directory_path):
+            for file in files:
+                file_path = os.path.join(root, file)
+                task = FileTask(
+                    task_type=TaskType.INDEX_FILE,
+                    file_path=file_path
+                )
+                file_processing_queue.add_task(task)
+                files_added += 1
         
-        # Update progress
+        indexing_progress["total_files"] = files_added
+        print(f"Added {files_added} files to processing queue")
+        
+        # Wait for all tasks to complete and track progress
+        while True:
+            # Get progress from the queue
+            queue_progress = file_processing_queue.get_progress()
+            
+            # Update our indexing progress
+            total_completed = queue_progress['total_processed'] + queue_progress['total_failed']
+            progress = total_completed / files_added if files_added > 0 else 1.0
+            
+            indexing_progress.update({
+                "files_processed": total_completed,
+                "progress": progress
+            })
+            
+            # Check if all tasks are complete
+            if not queue_progress['is_processing'] and queue_progress['queue_size'] == 0:
+                break
+                
+            time.sleep(0.5)  # Check every 500ms
+        
+        # Final progress update
+        final_progress = file_processing_queue.get_progress()
         indexing_progress.update({
             "is_indexing": False,
             "current_file": None,
-            "files_processed": count,
-            "total_files": count,
+            "files_processed": final_progress['total_processed'],
+            "total_files": files_added,
             "progress": 1.0
         })
         
         # Start new file watcher
-        file_watcher = FileChangeHandler(indexer)
+        file_watcher = FileChangeHandler(file_processing_queue)
         file_observer = Observer()
         file_observer.schedule(file_watcher, path=directory_path, recursive=True)
         file_observer.start()
         
         current_directory = directory_path
-        print(f"Completed indexing {count} files from {directory_path}")
+        final_stats = file_processing_queue.get_progress()
+        print(f"Completed processing {final_stats['total_processed']} files from {directory_path} ({final_stats['total_failed']} failed)")
         
     except Exception as e:
         print(f"Indexing error: {e}")
@@ -230,7 +337,7 @@ async def health_check():
         "status": "healthy",
         "timestamp": datetime.now().isoformat(),
         "services": {
-            "indexer": indexer is not None,
+            "file_processing_queue": file_processing_queue is not None and file_processing_queue.is_running(),
             "searcher": searcher is not None,
             "file_watcher": file_observer is not None and file_observer.is_alive() if file_observer else False
         }

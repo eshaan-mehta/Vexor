@@ -19,9 +19,3 @@
 3. Refactor rather than duplicate functionality
 4. Maintain clear separation of concerns
 5. Document changes and reasoning at each step
-
-## Task 1 Corrections
-- **REMOVED**: Priority system (was overcomplicating the design)
-- **SIMPLIFIED**: Queue uses simple FIFO with `queue.Queue`
-- **MOVE OPERATIONS**: Single `MOVE_FILE` task type, worker handles delete+add
-- **CLEAN DESIGN**: Straightforward queue aligned with original design

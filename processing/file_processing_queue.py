@@ -55,6 +55,7 @@ class FileProcessingQueue:
             'total_added': 0,
             'total_processed': 0,
             'total_failed': 0,
+            'queue_size': 0,
             'processing_start_time': None
         }
         
@@ -79,6 +80,7 @@ class FileProcessingQueue:
             
             with self._stats_lock:
                 self._stats['total_added'] += 1
+                self._stats['queue_size'] = self._queue.qsize()
                 
                 # Set start time on first task
                 if self._stats['processing_start_time'] is None:
@@ -109,6 +111,11 @@ class FileProcessingQueue:
         
         try:
             task = self._queue.get(timeout=timeout)
+
+            with self._stats_lock:
+                self._stats['queue_size'] = self._queue.qsize()
+            
+
             return task
         except queue.Empty:
             return None
@@ -161,6 +168,7 @@ class FileProcessingQueue:
             'total_added': stats['total_added'],
             'total_processed': stats['total_processed'],
             'total_failed': stats['total_failed'],
+            'queue_size': stats['queue_size'],
             'progress_percentage': progress_percentage,
             'processing_rate': processing_rate,  # tasks per second
         }
@@ -173,12 +181,13 @@ class FileProcessingQueue:
         """Get current queue size."""
         return self._queue.qsize()
     
-    def shutdown(self) -> bool:
+    def shutdown(self):
         """
         Initiate graceful shutdown of the queue.
         """
         logger.info("Shutdown initiated for FileProcessingQueue")
-
         self._shutdown_event.set()
-        
-        return True
+    
+    def is_shutdown(self) -> bool:
+        """Check if queue is in shutdown state."""
+        return self._shutdown_event.is_set()

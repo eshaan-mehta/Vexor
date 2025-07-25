@@ -16,7 +16,7 @@ import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from processing import FileProcessingQueue, FileTask, TaskType
+from processing.file_processing_queue import FileProcessingQueue, FileTask, TaskType
 
 
 class TestFileProcessingQueue(unittest.TestCase):
@@ -25,7 +25,7 @@ class TestFileProcessingQueue(unittest.TestCase):
     def setUp(self):
         """Set up test fixtures before each test method."""
         self.queue = FileProcessingQueue()
-        self.test_files = [
+        self.dummy_test_files = [
             "/test/file1.txt",
             "/test/file2.py",
             "/test/file3.md"
@@ -34,7 +34,7 @@ class TestFileProcessingQueue(unittest.TestCase):
     def tearDown(self):
         """Clean up after each test method."""
         if hasattr(self, 'queue'):
-            self.queue.shutdown(timeout=5.0)
+            self.queue.shutdown()
     
     def test_queue_initialization(self):
         """Queue Initialization - Verify queue starts empty and in correct initial state"""
@@ -48,7 +48,7 @@ class TestFileProcessingQueue(unittest.TestCase):
         # Create a test task
         task = FileTask(
             task_type=TaskType.INDEX_FILE,
-            file_path=self.test_files[0]
+            file_path=self.dummy_test_files[0]
         )
         
         # Add task
@@ -60,7 +60,7 @@ class TestFileProcessingQueue(unittest.TestCase):
         # Get task
         retrieved_task = self.queue.get_task(timeout=1.0)
         self.assertIsNotNone(retrieved_task)
-        self.assertEqual(retrieved_task.file_path, self.test_files[0])
+        self.assertEqual(retrieved_task.file_path, self.dummy_test_files[0])
         self.assertEqual(retrieved_task.task_type, TaskType.INDEX_FILE)
         
         # Mark as completed
@@ -91,37 +91,6 @@ class TestFileProcessingQueue(unittest.TestCase):
         
         self.assertEqual(actual_order, expected_order)
     
-    def test_convenience_methods(self):
-        """Convenience Methods - Verify helper methods for adding different task types work correctly"""
-        # Test index task
-        success = self.queue.add_index_task("/index/file.txt")
-        self.assertTrue(success)
-        
-        # Test delete task
-        success = self.queue.add_delete_task("/delete/file.txt")
-        self.assertTrue(success)
-        
-        # Test update task
-        success = self.queue.add_update_task("/update/file.txt")
-        self.assertTrue(success)
-        
-        # Test move task
-        success = self.queue.add_move_task("/old/path.txt", "/new/path.txt")
-        self.assertTrue(success)
-        
-        # Should have 4 tasks total
-        self.assertEqual(self.queue.size(), 4)
-        
-        # Process all tasks
-        processed_tasks = []
-        while not self.queue.is_empty():
-            task = self.queue.get_task(timeout=1.0)
-            if task:
-                processed_tasks.append(task)
-                self.queue.task_completed(task, success=True)
-        
-        self.assertEqual(len(processed_tasks), 4)
-    
     def test_progress_tracking(self):
         """Progress Tracking - Validate progress statistics are calculated and updated correctly"""
         # Initial progress
@@ -132,7 +101,7 @@ class TestFileProcessingQueue(unittest.TestCase):
         self.assertFalse(progress['is_processing'])
         
         # Add some tasks
-        for file_path in self.test_files:
+        for file_path in self.dummy_test_files:
             task = FileTask(TaskType.INDEX_FILE, file_path)
             self.queue.add_task(task)
         
@@ -240,7 +209,7 @@ class TestFileProcessingQueue(unittest.TestCase):
     def test_shutdown_functionality(self):
         """Shutdown Functionality - Ensure queue shuts down gracefully and rejects new operations"""
         # Add some tasks
-        for file_path in self.test_files:
+        for file_path in self.dummy_test_files:
             task = FileTask(TaskType.INDEX_FILE, file_path)
             self.queue.add_task(task)
         
@@ -252,7 +221,7 @@ class TestFileProcessingQueue(unittest.TestCase):
         self.assertIsNotNone(task)
         
         # Initiate shutdown
-        shutdown_success = self.queue.shutdown(timeout=5.0)
+        self.queue.shutdown()
         
         # Complete the task we retrieved
         self.queue.task_completed(task, success=True)
@@ -268,30 +237,7 @@ class TestFileProcessingQueue(unittest.TestCase):
         # Should not be able to get tasks
         retrieved_task = self.queue.get_task(timeout=1.0)
         self.assertIsNone(retrieved_task)
-    
-    def test_move_operation_metadata(self):
-        """Move Operation Metadata - Verify move tasks include correct source and destination metadata"""
-        old_path = "/old/location/file.txt"
-        new_path = "/new/location/file.txt"
-        
-        success = self.queue.add_move_task(old_path, new_path)
-        self.assertTrue(success)
-        self.assertEqual(self.queue.size(), 1)
-        
-        # Get the move task and verify metadata
-        task = self.queue.get_task(timeout=1.0)
-        self.assertIsNotNone(task)
-        
-        # Verify move task
-        self.assertEqual(task.task_type, TaskType.MOVE_FILE)
-        self.assertEqual(task.file_path, old_path)
-        self.assertEqual(task.metadata.get('old_path'), old_path)
-        self.assertEqual(task.metadata.get('new_path'), new_path)
-        
-        # Clean up
-        self.queue.task_completed(task, success=True)
-
-
+ 
 if __name__ == '__main__':
     # Configure logging for tests
     import logging
