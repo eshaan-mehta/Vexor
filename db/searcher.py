@@ -1,12 +1,15 @@
 import os
 import chromadb
 import numpy as np
+import logging
 
 from chromadb.config import Settings
 from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional, Tuple
 
 from utils.math_utils import normalize_cosine_distance
+
+logger = logging.getLogger(__name__)
 
 class Searcher:
     metadata_weight = 0.62
@@ -26,6 +29,29 @@ class Searcher:
         self.metadata_collection = self.client.get_collection(metadata_collection_name)
         self.content_collection = self.client.get_collection(content_collection_name)
     
+    def __del__(self):
+        """Destructor to ensure cleanup on garbage collection."""
+        self.cleanup()
+
+    def cleanup(self):
+        """Clean up resources to prevent semaphore leaks."""
+        try:
+            # Clear collection references
+            self.metadata_collection = None
+            self.content_collection = None
+            
+            # Close ChromaDB client if it has a close method
+            if hasattr(self.client, 'close'):
+                self.client.close()
+            
+            # Clear client reference
+            self.client = None
+                
+            logger.debug("Searcher resources cleaned up")
+        except Exception as e:
+            logger.error(f"Error during Searcher cleanup: {e}")
+
+
     def search(self, 
                query: str, 
                limit: int = 10, 

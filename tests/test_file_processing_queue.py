@@ -166,8 +166,8 @@ class TestFileProcessingQueue(unittest.TestCase):
                         # Simulate some processing time
                         time.sleep(0.01)
                         self.queue.task_completed(task, success=True)
-                        processed_count += 1
                         with results_lock:
+                            processed_count += 1
                             results['processed'] += 1
                     else:
                         # No more tasks available

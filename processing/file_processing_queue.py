@@ -191,3 +191,25 @@ class FileProcessingQueue:
     def is_shutdown(self) -> bool:
         """Check if queue is in shutdown state."""
         return self._shutdown_event.is_set()
+    
+    def cleanup(self):
+        """Clean up queue resources."""
+        try:
+            # Ensure shutdown is called
+            self.shutdown()
+            
+            # Clear any remaining items in the queue
+            while not self._queue.empty():
+                try:
+                    self._queue.get_nowait()
+                    self._queue.task_done()
+                except:
+                    break
+            
+            logger.debug("FileProcessingQueue cleaned up")
+        except Exception as e:
+            logger.error(f"Error during FileProcessingQueue cleanup: {e}")
+    
+    def __del__(self):
+        """Destructor to ensure cleanup on garbage collection."""
+        self.cleanup()
