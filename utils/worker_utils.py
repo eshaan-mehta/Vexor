@@ -16,7 +16,7 @@ def start_file_processing_workers(
     file_processing_queue, 
     file_processing_workers: List[threading.Thread], 
     processing_stats: dict,
-    num_workers: int = 4
+    num_workers: int = 10
 ) -> None:
     """
     Start file processing worker threads.
@@ -58,9 +58,11 @@ def stop_file_processing_workers(
     if file_processing_queue:
         file_processing_queue.shutdown()
     
-    # Wait for all workers to finish
+    # Wait for all workers to finish with shorter timeout
     for worker in file_processing_workers:
-        worker.join(timeout=5.0)
+        worker.join(timeout=2.0)
+        if worker.is_alive():
+            thread_safe_print(f"Worker {worker.name} did not stop gracefully")
     
     file_processing_workers.clear()
     thread_safe_print("File processing workers stopped")
@@ -88,8 +90,8 @@ def file_processing_worker_loop(file_processing_queue, processing_stats: dict) -
                 continue
             
             # Print when task is picked up from queue
-            file_name = os.path.basename(task.file_path)
-            thread_safe_print(f"{worker_name} picked up task: {task.task_type.value} for '{file_name}'")
+            file_path = os.path.abspath(task.file_path)
+            thread_safe_print(f"{worker_name} picked up task: {task.task_type.value} for '{file_path}'")
             
             try:
                 status = processor.process_task(task)
@@ -99,7 +101,7 @@ def file_processing_worker_loop(file_processing_queue, processing_stats: dict) -
                     processing_stats[status.value] += 1
                 
                 # Print result of processing with detailed status
-                thread_safe_print(f"{worker_name} completed task: {task.task_type.value} for '{file_name}' - {status.value.upper()}")
+                thread_safe_print(f"{worker_name} completed task: {task.task_type.value} for '{file_path}' - {status.value.upper()}")
                 
                 # Report success to queue (SUCCESS, SKIPPED, HIDDEN, and LARGE are considered successful)
                 success = status in [ProcessingStatus.SUCCESS, ProcessingStatus.SKIPPED, ProcessingStatus.HIDDEN, ProcessingStatus.LARGE]
@@ -110,7 +112,7 @@ def file_processing_worker_loop(file_processing_queue, processing_stats: dict) -
                 with print_lock:
                     processing_stats["failure"] += 1
                 
-                thread_safe_print(f"{worker_name} ERROR processing '{file_name}': {e}")
+                thread_safe_print(f"{worker_name} ERROR processing '{file_path}': {e}")
                 file_processing_queue.task_completed(task, False)
     
     finally:

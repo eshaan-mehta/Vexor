@@ -6,6 +6,7 @@ Immediate
 
 Improvements (Later)
 - what happens if a worker takes a file to index but fails.
+- ability to skip directories (user can set directories to omit alongside )
 
 
 Testing

@@ -16,18 +16,38 @@ class Searcher:
     content_weight = 0.38
 
     def __init__(self,
+                client=None,
                 db_path: str = "./chroma",
                 metadata_collection_name: str = "file_metadata",
                 content_collection_name: str = "file_content"
                 ):
         
-        self.client = chromadb.PersistentClient(
-            path=db_path,
-            settings=Settings(anonymized_telemetry=False)
-        )
+        # Use provided client or create a new one
+        if client:
+            self.client = client
+        else:
+            self.client = chromadb.PersistentClient(
+                path=db_path,
+                settings=Settings(anonymized_telemetry=False)
+            )
 
-        self.metadata_collection = self.client.get_collection(metadata_collection_name)
-        self.content_collection = self.client.get_collection(content_collection_name)
+        # Use get_collection first, but fall back to get_or_create_collection if needed
+        try:
+            self.metadata_collection = self.client.get_collection(metadata_collection_name)
+            self.content_collection = self.client.get_collection(content_collection_name)
+        except Exception:
+            # Fallback: create collections if they don't exist (shouldn't happen with proper initialization)
+            from chromadb.utils.embedding_functions import SentenceTransformerEmbeddingFunction
+            embedding_function = SentenceTransformerEmbeddingFunction(model_name="all-MiniLM-L6-v2")
+            
+            self.metadata_collection = self.client.get_or_create_collection(
+                name=metadata_collection_name,
+                embedding_function=embedding_function
+            )
+            self.content_collection = self.client.get_or_create_collection(
+                name=content_collection_name,
+                embedding_function=embedding_function
+            )
     
     def __del__(self):
         """Destructor to ensure cleanup on garbage collection."""
@@ -41,6 +61,7 @@ class Searcher:
             self.content_collection = None
             
             # Close ChromaDB client if it has a close method
+            # Note: If client was shared from initialization, this will close it
             if hasattr(self.client, 'close'):
                 self.client.close()
             
