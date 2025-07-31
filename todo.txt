@@ -1,5 +1,4 @@
 Immediate
-1 after indexing, only leave one indexing thread running
 4 index files using file hash
 5 split file into smaller chunks for storage and more granular search
 7 create ui for mac similar to spotlight search

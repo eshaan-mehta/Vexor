@@ -3,17 +3,21 @@ from db.indexer import Indexer
 from db.searcher import Searcher
 from filesystem.filechangehandler import FileChangeHandler
 from watchdog.observers import Observer
+from processing.file_processing_queue import FileProcessingQueue
 
 
 def main():
-    root_dir = os.path.abspath("./test-files")
+    # root_dir = os.path.abspath("./test-files")
+    root_dir = os.path.expanduser("~/Desktop")
 
-    indexer = Indexer() # file indexer
-    searcher = Searcher() # search engine
+    db_path = './.chroma'
+    # db_path = './chroma-legacy'
+    indexer = FileProcessingQueue()
+    searcher = Searcher(db_path=db_path) # search engine
 
     print(f"Started indexing directory: {root_dir}")
-    count = indexer.index_directory(root_dir, cleanup_deleted=True, use_batch=False)
-    print(f"Done indexing directory: {root_dir}. Indexed {count} files.")
+    # count = indexer.index_directory(root_dir, cleanup_deleted=True, use_batch=False)
+    print(f"Done indexing directory: {root_dir}. Indexed 0 files.")
 
     # Setup file watcher
     print("Starting file watcher...")

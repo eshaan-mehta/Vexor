@@ -34,7 +34,7 @@ def test_search():
     """Test search endpoint"""
     try:
         search_data = {
-            "query": "stories about spaceships",
+            "query": "svc handler code",
             "limit": 5
         }
         response = requests.post(f"{BASE_URL}/search", json=search_data)

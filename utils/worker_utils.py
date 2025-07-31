@@ -16,7 +16,7 @@ def start_file_processing_workers(
     file_processing_queue, 
     file_processing_workers: List[threading.Thread], 
     processing_stats: dict,
-    num_workers: int = 10
+    num_workers: int = 4
 ) -> None:
     """
     Start file processing worker threads.
@@ -117,5 +117,9 @@ def file_processing_worker_loop(file_processing_queue, processing_stats: dict) -
     
     finally:
         # Clean up processor resources when worker stops
-        processor.cleanup()
-        thread_safe_print(f"Worker {worker_name} stopped and cleaned up")
+        try:
+            processor.cleanup()
+            thread_safe_print(f"Worker {worker_name} stopped and cleaned up")
+        except Exception as e:
+            thread_safe_print(f"Worker {worker_name} cleanup error: {e}")
+            thread_safe_print(f"Worker {worker_name} stopped")

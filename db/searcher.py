@@ -17,7 +17,7 @@ class Searcher:
 
     def __init__(self,
                 client=None,
-                db_path: str = "./chroma",
+                db_path: str = "./.chroma",
                 metadata_collection_name: str = "file_metadata",
                 content_collection_name: str = "file_content"
                 ):

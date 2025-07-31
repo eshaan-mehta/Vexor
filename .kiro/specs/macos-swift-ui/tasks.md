@@ -55,7 +55,7 @@
   - Ensure progress updates are thread-safe and accurate
   - _Requirements: 8.8_
 
-- [ ] 7. Add directory selection and reindexing functionality
+- [x] 7. Add directory selection and reindexing functionality
 
   - Implement `/set-directory` endpoint with directory validation
   - Add logic to clear existing index when directory changes
@@ -64,7 +64,7 @@
   - Add proper error handling for invalid directory paths
   - _Requirements: 6.2, 6.3, 6.7_
 
-- [ ] 8. Enhance search endpoint with proper thread isolation
+- [x] 8. Enhance search endpoint with proper thread isolation
 
   - Ensure search operations use dedicated single-threaded executor
   - Verify search doesn't interfere with file processing operations
@@ -77,7 +77,8 @@
   - Create test scripts to validate queue-based processing
   - Test concurrent file processing with multiple worker threads
   - Validate thread safety of database operations
-  - Test file watcher responsiveness to real-time changes
+  - Test file watcher responsiveness to changes (want eventual consistency)
+  - Test searcher and ability to overwrite concurrent requests
   - Add performance benchmarks for queue processing throughput
   - _Requirements: 8.6, 8.7_
 
