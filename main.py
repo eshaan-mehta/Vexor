@@ -10,9 +10,12 @@ from contextlib import asynccontextmanager
 from typing import List, Optional
 from datetime import datetime
 
+# Import configuration
+from config import *
+
 # Disable ChromaDB telemetry completely
-os.environ["ANONYMIZED_TELEMETRY"] = "False"
-os.environ["CHROMA_TELEMETRY_DISABLED"] = "True"
+for key, value in CHROMA_ENV_VARS.items():
+    os.environ[key] = value
 
 from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
@@ -33,6 +36,7 @@ import chromadb
 from chromadb.config import Settings
 from chromadb.utils.embedding_functions import SentenceTransformerEmbeddingFunction
 
+
 # Global instances
 file_processing_queue = None
 file_processing_workers = []
@@ -44,31 +48,31 @@ indexing_executor = None
 current_directory = None
 
 # Generation-based search invalidation system
-search_generation = 0
+search_generation = INITIAL_FILES_PROCESSED
 search_generation_lock = threading.Lock()
 search_semaphore = None  # Will be initialized in lifespan
 
 indexing_progress = {
     "isIndexing": False,
     "currentFile": None,
-    "filesProcessed": 0,
-    "totalFiles": 0,
-    "progress": 0.0
+    "filesProcessed": INITIAL_FILES_PROCESSED,
+    "totalFiles": INITIAL_TOTAL_FILES,
+    "progress": INITIAL_PROGRESS
 }
 
 # Status tracking for detailed reporting
 processing_stats = {
-    "success": 0,
-    "skipped": 0,
-    "hidden": 0,
-    "large": 0,
-    "failure": 0
+    "success": INITIAL_SUCCESS_COUNT,
+    "skipped": INITIAL_SKIPPED_COUNT,
+    "hidden": INITIAL_HIDDEN_COUNT,
+    "large": INITIAL_LARGE_COUNT,
+    "failure": INITIAL_FAILURE_COUNT
 }
 
 # Pydantic models for API
 class SearchRequest(BaseModel):
     query: str
-    limit: int = 10
+    limit: int = DEFAULT_SEARCH_LIMIT
 
 class SearchResult(BaseModel):
     fileName: str
@@ -101,8 +105,7 @@ async def lifespan(app: FastAPI):
     print("Starting FastAPI backend...")
     
     # Initialize database and create collections if they don't exist
-    db_path = './.chroma'
-    db_client = initialize_database(db_path)
+    db_client = initialize_database(CHROMA_DB_PATH)
     
     # Initialize components
     file_processing_queue = FileProcessingQueue()
@@ -113,19 +116,19 @@ async def lifespan(app: FastAPI):
         file_processing_queue=file_processing_queue,
         file_processing_workers=file_processing_workers,
         processing_stats=processing_stats,
-        num_workers=8
+        num_workers=NUM_FILE_PROCESSING_WORKERS
     )
     
-    # Create thread pools - allow up to 3 concurrent searches for generation-based system
-    search_executor = ThreadPoolExecutor(max_workers=3, thread_name_prefix="search")
-    indexing_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="indexing")
+    # Create thread pools
+    search_executor = ThreadPoolExecutor(max_workers=NUM_CONCURRENT_SEARCHERS_ALLOWED, thread_name_prefix="search")
+    indexing_executor = ThreadPoolExecutor(max_workers=MAX_INDEXING_THREADS, thread_name_prefix="indexing")
     
-    # Initialize search semaphore to limit concurrent searches (max 3)
+    # Initialize search semaphore to limit concurrent searches
     global search_semaphore
-    search_semaphore = asyncio.Semaphore(3)
+    search_semaphore = asyncio.Semaphore(NUM_CONCURRENT_SEARCHERS_ALLOWED)
     
     # Set default directory and start indexing
-    default_dir = os.path.expanduser("~/Desktop")
+    default_dir = os.path.expanduser(DEFAULT_DIRECTORY)
     if os.path.exists(default_dir):
          # Start file observer for the default directory
         print(f"Starting file observer for {default_dir}...")
@@ -157,9 +160,9 @@ async def lifespan(app: FastAPI):
         import os
         os._exit(1)
     
-    # Set 10-second timeout for entire shutdown process
+    # Set timeout for entire shutdown process
     signal.signal(signal.SIGALRM, shutdown_timeout_handler)
-    signal.alarm(10)
+    signal.alarm(SHUTDOWN_TIMEOUT_SECONDS)
     
     try:
         # Invalidate any ongoing search requests by incrementing generation
@@ -259,25 +262,25 @@ async def lifespan(app: FastAPI):
     print("FastAPI backend shutdown complete")
 
 app = FastAPI(
-    title="File Search API",
-    description="FastAPI backend for native macOS file search application",
-    version="1.0.0",
+    title=API_TITLE,
+    description=API_DESCRIPTION,
+    version=API_VERSION,
     lifespan=lifespan
 )
 
 # Add CORS middleware for frontend communication
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Configure appropriately for production
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=CORS_ALLOW_ORIGINS,  # Configure appropriately for production
+    allow_credentials=CORS_ALLOW_CREDENTIALS,
+    allow_methods=CORS_ALLOW_METHODS,
+    allow_headers=CORS_ALLOW_HEADERS,
 )
 
 
 def initialize_database(db_path, 
-                       metadata_collection_name: str = "file_metadata",
-                       content_collection_name: str = "file_content"):
+                       metadata_collection_name: str = METADATA_COLLECTION_NAME,
+                       content_collection_name: str = CONTENT_COLLECTION_NAME):
     """
     Initialize ChromaDB database and create collections if they don't exist.
     This ensures the searcher can connect to existing collections.
@@ -301,17 +304,17 @@ def initialize_database(db_path,
         )
         
         # Create embedding function
-        embedding_function = SentenceTransformerEmbeddingFunction(model_name="all-MiniLM-L6-v2")
+        embedding_function = SentenceTransformerEmbeddingFunction(model_name=EMBEDDING_MODEL_NAME)
         
         # Create or get collections
         metadata_collection = client.get_or_create_collection(
             name=metadata_collection_name,
             embedding_function=embedding_function,
             metadata={
-                "hnsw:space": "cosine",
-                "hnsw:construction_ef": 100,
-                "hnsw:search_ef": 100,
-                "hnsw:M": 16
+                "hnsw:space": HNSW_SPACE,
+                "hnsw:construction_ef": HNSW_CONSTRUCTION_EF,
+                "hnsw:search_ef": HNSW_SEARCH_EF,
+                "hnsw:M": HNSW_M
             }
         )
         
@@ -319,10 +322,10 @@ def initialize_database(db_path,
             name=content_collection_name,
             embedding_function=embedding_function,
             metadata={
-                "hnsw:space": "cosine",
-                "hnsw:construction_ef": 100,
-                "hnsw:search_ef": 100,
-                "hnsw:M": 16
+                "hnsw:space": HNSW_SPACE,
+                "hnsw:construction_ef": HNSW_CONSTRUCTION_EF,
+                "hnsw:search_ef": HNSW_SEARCH_EF,
+                "hnsw:M": HNSW_M
             }
         )
         
@@ -380,48 +383,34 @@ def index_directory_sync(directory_path: str):
         indexing_progress.update({
             "isIndexing": True,
             "currentFile": None,
-            "filesProcessed": 0,
-            "totalFiles": 0,
-            "progress": 0.0
+            "filesProcessed": INITIAL_FILES_PROCESSED,
+            "totalFiles": INITIAL_TOTAL_FILES,
+            "progress": INITIAL_PROGRESS
         })
         
         # Reset processing stats
         with print_lock:
             processing_stats.update({
-                "success": 0,
-                "skipped": 0,
-                "hidden": 0,
-                "large": 0,
-                "failure": 0
+                "success": INITIAL_SUCCESS_COUNT,
+                "skipped": INITIAL_SKIPPED_COUNT,
+                "hidden": INITIAL_HIDDEN_COUNT,
+                "large": INITIAL_LARGE_COUNT,
+                "failure": INITIAL_FAILURE_COUNT
             })
         
         print(f"Starting indexing of directory: {directory_path}")
         
         # Walk directory and add ALL files to queue (let workers decide what to process)
-        files_added = 0
+        files_added = INITIAL_FILES_PROCESSED
         
-        # Directories to skip during indexing
-        SKIP_DIRECTORIES = {
-            'venv', 'env', '.venv', '.env',  # Python virtual environments
-            'node_modules', '.npm',          # Node.js
-            '.git', '.svn', '.hg',          # Version control
-            '__pycache__', '.pytest_cache', # Python cache
-            '.tox', '.coverage',            # Python testing
-            'build', 'dist', '.build',      # Build directories
-            '.DS_Store', 'Thumbs.db',       # System files
-            '.idea', '.vscode',             # IDE directories
-            'target', 'bin', 'obj',         # Compiled output
-            '.gradle', '.maven',            # Build tools
-            'vendor',                       # Dependencies
-            'test', 'train', 'validation'   # ML
-        }
+        # Use configured directories to skip during indexing
         
         for root, dirs, files in os.walk(directory_path):
             # Skip hidden directories and common ignore patterns
             dirs[:] = [d for d in dirs if not (
-                d.lower() in SKIP_DIRECTORIES or
                 d.startswith('.') or 
-                d.startswith('__') 
+                d.startswith('__') or 
+                d.lower() in SKIP_DIRECTORIES
             )]
             
             for file in files:
@@ -438,7 +427,7 @@ def index_directory_sync(directory_path: str):
         
         # Wait for all tasks to complete and track progress with timeout
         start_time = time.time()
-        timeout_seconds = 300  # 5 minute timeout
+        timeout_seconds = INDEXING_TIMEOUT_SECONDS
         
         while True:
             # Get progress from the queue
@@ -446,7 +435,7 @@ def index_directory_sync(directory_path: str):
             
             # Update our indexing progress
             total_completed = queue_progress['total_processed'] + queue_progress['total_failed']
-            progress = total_completed / files_added if files_added > 0 else 1.0
+            progress = total_completed / files_added if files_added > INITIAL_FILES_PROCESSED else 1.0
             
             indexing_progress.update({
                 "filesProcessed": total_completed,
@@ -454,7 +443,7 @@ def index_directory_sync(directory_path: str):
             })
             
             # Check if all tasks are complete
-            if not queue_progress['is_processing'] and queue_progress['queue_size'] == 0:
+            if not queue_progress['is_processing'] and queue_progress['queue_size'] == INITIAL_FILES_PROCESSED:
                 print("All tasks completed successfully")
                 break
             
@@ -467,15 +456,15 @@ def index_directory_sync(directory_path: str):
                 break
             
             # Alternative completion check - if we've processed all files
-            if total_completed >= files_added and queue_progress['queue_size'] == 0:
+            if total_completed >= files_added and queue_progress['queue_size'] == INITIAL_FILES_PROCESSED:
                 print("All files processed - completing indexing")
                 break
             
-            # Debug output every 30 seconds
-            if elapsed_time > 0 and int(elapsed_time) % 30 == 0 and elapsed_time - int(elapsed_time) < 0.5:
+            # Debug output every configured interval
+            if elapsed_time > 0 and int(elapsed_time) % INDEXING_DEBUG_OUTPUT_INTERVAL == 0 and elapsed_time - int(elapsed_time) < 0.5:
                 print(f"Indexing progress: {total_completed}/{files_added} files, queue_size={queue_progress['queue_size']}, is_processing={queue_progress['is_processing']}")
                 
-            time.sleep(0.5)  # Check every 500ms
+            time.sleep(INDEXING_PROGRESS_CHECK_INTERVAL)
         
         # Final progress update
         final_progress = file_processing_queue.get_progress()
@@ -507,9 +496,9 @@ def index_directory_sync(directory_path: str):
         indexing_progress.update({
             "isIndexing": False,
             "currentFile": None,
-            "filesProcessed": 0,
-            "totalFiles": 0,
-            "progress": 0.0
+            "filesProcessed": INITIAL_FILES_PROCESSED,
+            "totalFiles": INITIAL_TOTAL_FILES,
+            "progress": INITIAL_PROGRESS
         })
 
     return
@@ -543,7 +532,7 @@ async def search_endpoint(request: SearchRequest):
         raise HTTPException(status_code=503, detail="Search service not initialized")
     
     start_time = datetime.now()
-    request_id = f"search-{int(start_time.timestamp() * 1000)}"
+    request_id = f"{SEARCH_REQUEST_ID_PREFIX}{int(start_time.timestamp() * 1000)}"
     
     # Get generation for this search (invalidates all previous searches)
     generation = get_next_search_generation()
@@ -551,7 +540,7 @@ async def search_endpoint(request: SearchRequest):
     print(f"New search request {request_id} (gen {generation}): {request.query}")
     
     try:
-        # Use semaphore to limit concurrent searches (max 3)
+        # blocks if over n requests are running
         async with search_semaphore:
             # Run search in thread pool with timeout
             loop = asyncio.get_event_loop()
@@ -567,10 +556,10 @@ async def search_endpoint(request: SearchRequest):
                         generation,
                         request_id
                     ),
-                    timeout=5.0
+                    timeout=SEARCH_TIMEOUT_SECONDS
                 )
             except asyncio.TimeoutError:
-                print(f"Search {request_id} (gen {generation}) timed out after 5 seconds")
+                print(f"Search {request_id} (gen {generation}) timed out after {SEARCH_TIMEOUT_SECONDS} seconds")
                 raise HTTPException(status_code=408, detail="Search request timed out")
             
             # Check if results were invalidated
@@ -633,7 +622,7 @@ async def get_status():
     
     # Get semaphore availability (how many concurrent searches are running)
     available_search_slots = search_semaphore._value if search_semaphore else 0
-    concurrent_searches = 3 - available_search_slots  # Max 3 - available = running
+    concurrent_searches = NUM_CONCURRENT_SEARCHERS_ALLOWED - available_search_slots # num running
     
     return {
         "status": "running",
@@ -642,7 +631,7 @@ async def get_status():
         "search": {
             "current_generation": current_gen,
             "concurrent_searches": concurrent_searches,
-            "max_concurrent_searches": 3
+            "max_concurrent_searches": NUM_CONCURRENT_SEARCHERS_ALLOWED
         },
         "timestamp": datetime.now().isoformat()
     }
@@ -667,14 +656,14 @@ def signal_handler(signum, frame):
     """Handle shutdown signals gracefully with timeout"""
     print(f"\nReceived signal {signum}, initiating emergency shutdown...")
     
-    # Set a 3-second timeout for signal handler
+    # Set timeout for signal handler
     def emergency_exit(signum, frame):
         print("Emergency shutdown timeout - forcing immediate exit")
         import os
         os._exit(1)
     
     signal.signal(signal.SIGALRM, emergency_exit)
-    signal.alarm(3)
+    signal.alarm(EMERGENCY_SHUTDOWN_TIMEOUT_SECONDS)
     
     # Force shutdown of all components
     global file_processing_queue, file_processing_workers, file_observer, search_executor, indexing_executor, search_generation
@@ -735,7 +724,7 @@ if __name__ == "__main__":
     
     try:
         import uvicorn
-        uvicorn.run(app, host="127.0.0.1", port=8000, log_level="info")
+        uvicorn.run(app, host=SERVER_HOST, port=SERVER_PORT, log_level=SERVER_LOG_LEVEL)
     except KeyboardInterrupt:
         print("\nKeyboard interrupt received, shutting down...")
         signal_handler(signal.SIGINT, None)
