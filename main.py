@@ -19,9 +19,13 @@ for key, value in CHROMA_ENV_VARS.items():
 
 from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
 
 from db.searcher import Searcher
+from models import (
+    SearchRequest, SearchResult, SearchResponse, 
+    DirectorySelectionRequest, IndexingProgress,
+    HealthResponse, StatusResponse, DirectorySelectionResponse
+)
 
 from processing.file_processor import FileProcessor, ProcessingStatus
 from processing.file_processing_queue import FileProcessingQueue, FileTask, TaskType
@@ -69,33 +73,7 @@ processing_stats = {
     "failure": INITIAL_FAILURE_COUNT
 }
 
-# Pydantic models for API
-class SearchRequest(BaseModel):
-    query: str
-    limit: int = DEFAULT_SEARCH_LIMIT
-
-class SearchResult(BaseModel):
-    fileName: str
-    filePath: str
-    score: float
-    fileType: str
-    lastModified: str
-
-class SearchResponse(BaseModel):
-    results: List[SearchResult]
-    totalCount: int
-    searchTime: float
-    requestId: str
-
-class DirectorySelectionRequest(BaseModel):
-    directoryPath: str
-
-class IndexingProgress(BaseModel):
-    isIndexing: bool
-    currentFile: Optional[str]
-    filesProcessed: int
-    totalFiles: int
-    progress: float
+# Pydantic models are now imported from models.py
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -600,7 +578,7 @@ async def search_endpoint(request: SearchRequest):
         print(f"Unexpected error in search {request_id} (gen {generation}): {e}")
         raise HTTPException(status_code=500, detail=f"Internal search error: {str(e)}")
 
-@app.get("/health")
+@app.get("/health", response_model=HealthResponse)
 async def health_check():
     """Health check endpoint"""
     return {
@@ -613,7 +591,7 @@ async def health_check():
         }
     }
 
-@app.get("/status")
+@app.get("/status", response_model=StatusResponse)
 async def get_status():
     """Get backend status and indexing information"""
     # Get current search generation and semaphore status
@@ -636,7 +614,7 @@ async def get_status():
         "timestamp": datetime.now().isoformat()
     }
 
-@app.post("/set-directory")
+@app.post("/set-directory", response_model=DirectorySelectionResponse)
 async def set_directory(request: DirectorySelectionRequest):
     """Set the directory to index and search"""
     await set_directory_internal(request.directoryPath)

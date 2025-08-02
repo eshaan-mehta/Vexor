@@ -25,3 +25,32 @@ Search through your file system using _**natural language**_. Extends the search
 5. Run the application `python3 main.py`
 6. Once all the files have been indexed, you can type to search through your files using natural language, and it will return the top `k` results.
 7. Enjoy!
+
+# Testing
+
+The project includes a comprehensive test suite located in the `tests/` directory.
+
+## Running Tests
+
+### Quick Test (Recommended for debugging)
+```bash
+python tests/test_search_simple.py
+```
+
+### Comprehensive Test Suite
+```bash
+python tests/test_search_generation.py
+```
+
+### Run All Tests
+```bash
+python run_all_tests.py
+```
+
+## Test Files
+- `tests/test_search_simple.py` - Simple synchronous tests for debugging
+- `tests/test_search_generation.py` - Comprehensive async test suite with statistics
+- `tests/test_api.py` - Basic API endpoint tests
+- `tests/run_tests.py` - Enhanced test runner with colored output
+
+See `tests/README.md` for detailed testing documentation.
