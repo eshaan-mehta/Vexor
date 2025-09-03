@@ -72,6 +72,40 @@ class Searcher:
         except Exception as e:
             logger.error(f"Error during Searcher cleanup: {e}")
 
+    def clear_database(self):
+        """Clear all data from both metadata and content collections."""
+        try:
+            print("Clearing database - removing all indexed files...")
+            
+            # Get collection counts before clearing
+            metadata_count = self.metadata_collection.count()
+            content_count = self.content_collection.count()
+            
+            print(f"Removing {metadata_count} metadata entries and {content_count} content entries")
+            
+            # Delete all documents from both collections
+            # ChromaDB doesn't have a clear() method, so we need to delete all documents
+            if metadata_count > 0:
+                # Get all IDs and delete them
+                metadata_data = self.metadata_collection.get()
+                if metadata_data['ids']:
+                    self.metadata_collection.delete(ids=metadata_data['ids'])
+                    print(f"Cleared {len(metadata_data['ids'])} metadata entries")
+            
+            if content_count > 0:
+                # Get all IDs and delete them
+                content_data = self.content_collection.get()
+                if content_data['ids']:
+                    self.content_collection.delete(ids=content_data['ids'])
+                    print(f"Cleared {len(content_data['ids'])} content entries")
+            
+            print("Database cleared successfully")
+            
+        except Exception as e:
+            logger.error(f"Error clearing database: {e}")
+            print(f"Error clearing database: {e}")
+            raise
+
 
     def search(self, 
                query: str, 

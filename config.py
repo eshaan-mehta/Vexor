@@ -30,6 +30,7 @@ INDEXING_TIMEOUT_SECONDS = 300  # 5 minutes
 INDEXING_PROGRESS_CHECK_INTERVAL = 0.5  # 500ms
 INDEXING_DEBUG_OUTPUT_INTERVAL = 30  # 30 seconds
 DEFAULT_DIRECTORY = "~/Desktop"
+CLEAR_DATABASE_ON_DIRECTORY_CHANGE = True  # Clear database when root directory changes
 
 # Server Configuration
 SERVER_HOST = "127.0.0.1"

@@ -49,7 +49,7 @@ class FileProcessor:
     that worker threads will use to process tasks from the queue.
     """
     
-    def __init__(self, db_path: str = "./chroma", 
+    def __init__(self, db_path: str = "./.chroma", 
                  metadata_collection_name: str = "file_metadata",
                  content_collection_name: str = "file_content"):
         """
@@ -64,9 +64,14 @@ class FileProcessor:
         
         # Initialize ChromaDB client and collections
         os.makedirs(db_path, exist_ok=True)
+        settings = Settings(
+            anonymized_telemetry=False,
+            allow_reset=True,
+            is_persistent=True
+        )
         self.client = chromadb.PersistentClient(
             path=db_path,
-            settings=Settings(anonymized_telemetry=False)
+            settings=settings
         )
         
         # Create embedding function per instance to avoid sharing resources

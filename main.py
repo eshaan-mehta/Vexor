@@ -20,8 +20,8 @@ for key, value in CHROMA_ENV_VARS.items():
 from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 
-from db.searcher import Searcher
-from models import (
+from processing.searcher import Searcher
+from models.models import (
     SearchRequest, SearchResult, SearchResponse, 
     DirectorySelectionRequest, IndexingProgress,
     HealthResponse, StatusResponse, DirectorySelectionResponse
@@ -483,21 +483,43 @@ def index_directory_sync(directory_path: str):
 
 async def set_directory_internal(directory_path: str):
     """Internal function to set directory and start indexing"""
+    global current_directory
+    
     if not os.path.exists(directory_path):
         raise HTTPException(status_code=400, detail="Directory does not exist")
     
     if not os.path.isdir(directory_path):
         raise HTTPException(status_code=400, detail="Path is not a directory")
     
-    # Update file observer to watch new directory if it's different
-    if current_directory != directory_path and file_observer:
-        print(f"Updating file observer from {current_directory} to {directory_path}")
-        # Stop watching the old directory
-        file_observer.unschedule_all()
-        # Start watching the new directory
-        file_watcher = FileChangeHandler(file_processing_queue)
-        file_observer.schedule(file_watcher, path=directory_path, recursive=True)
-        print(f"File observer now watching {directory_path}")
+    # Check if directory is actually changing
+    directory_changed = current_directory != directory_path
+    
+    if directory_changed:
+        print(f"Directory changed from {current_directory} to {directory_path}")
+        
+        # Clear the database when directory changes (if configured to do so)
+        if CLEAR_DATABASE_ON_DIRECTORY_CHANGE and searcher:
+            print("Clearing database due to directory change...")
+            try:
+                # Run database clearing in thread pool to avoid blocking
+                loop = asyncio.get_event_loop()
+                await loop.run_in_executor(indexing_executor, searcher.clear_database)
+                print("Database cleared successfully")
+            except Exception as e:
+                print(f"Error clearing database: {e}")
+                # Continue with indexing even if clearing fails
+        
+        # Update file observer to watch new directory
+        if file_observer:
+            print(f"Updating file observer from {current_directory} to {directory_path}")
+            # Stop watching the old directory
+            file_observer.unschedule_all()
+            # Start watching the new directory
+            file_watcher = FileChangeHandler(file_processing_queue)
+            file_observer.schedule(file_watcher, path=directory_path, recursive=True)
+            print(f"File observer now watching {directory_path}")
+    else:
+        print(f"Directory unchanged ({directory_path}), reindexing existing directory")
     
     # Start indexing in background thread
     loop = asyncio.get_event_loop()
@@ -651,8 +673,6 @@ def signal_handler(signum, frame):
         with search_generation_lock:
             search_generation += 1
             print(f"Emergency stop: invalidating searches (generation now {search_generation})")
-        except:
-            pass
         
         # Stop file observer immediately
         if file_observer:
