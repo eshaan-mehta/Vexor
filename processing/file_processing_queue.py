@@ -115,9 +115,11 @@ class FileProcessingQueue:
             with self._stats_lock:
                 self._stats['queue_size'] = self._queue.qsize()
             
-
             return task
         except queue.Empty:
+            return None
+        except Exception as e:
+            logger.error(f"Error getting task from queue: {e}")
             return None
     
     def task_completed(self, task: FileTask, success: bool = True):

@@ -60,7 +60,7 @@ supported_formats = [
 Here's a simple example of how to use Vexor:
 
 ```python
-from db.searcher import Searcher
+from processing.searcher import Searcher
 
 # Initialize searcher
 searcher = Searcher()

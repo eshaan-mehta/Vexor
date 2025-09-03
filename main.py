@@ -177,6 +177,11 @@ async def lifespan(app: FastAPI):
                 print("Indexing executor shutdown initiated")
             except Exception as e:
                 print(f"Error shutting down indexing executor: {e}")
+        
+        # Force garbage collection to clean up any remaining resources
+        import gc
+        gc.collect()
+        print("Forced garbage collection completed")
     
     except Exception as e:
         print(f"Error during initial shutdown: {e}")
@@ -722,7 +727,14 @@ if __name__ == "__main__":
     
     try:
         import uvicorn
-        uvicorn.run(app, host=SERVER_HOST, port=SERVER_PORT, log_level=SERVER_LOG_LEVEL)
+        # Disable auto-reload in production to prevent deadlocks
+        uvicorn.run(
+            app, 
+            host=SERVER_HOST, 
+            port=SERVER_PORT, 
+            log_level=SERVER_LOG_LEVEL,
+            reload=False  # Explicitly disable auto-reload to prevent deadlocks
+        )
     except KeyboardInterrupt:
         print("\nKeyboard interrupt received, shutting down...")
         signal_handler(signal.SIGINT, None)

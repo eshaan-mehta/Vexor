@@ -61,45 +61,62 @@ class FileProcessor:
             content_collection_name: Name of content collection
         """
         self.db_path = db_path
+        self.metadata_collection_name = metadata_collection_name
+        self.content_collection_name = content_collection_name
         
-        # Initialize ChromaDB client and collections
+        # Initialize ChromaDB client and collections with timeout protection
         os.makedirs(db_path, exist_ok=True)
         settings = Settings(
             anonymized_telemetry=False,
             allow_reset=True,
             is_persistent=True
         )
-        self.client = chromadb.PersistentClient(
-            path=db_path,
-            settings=settings
-        )
         
-        # Create embedding function per instance to avoid sharing resources
-        self.embedding_function = SentenceTransformerEmbeddingFunction(model_name="all-MiniLM-L6-v2")
-        
-        self.content_collection = self.client.get_or_create_collection(
-            name=content_collection_name,
-            embedding_function=self.embedding_function,
-            metadata = {
-                "hnsw:space": "cosine",  # cosine better for text embeddings
-                "hnsw:construction_ef": 100,  # size of candidates during indexing (default = 100)
-                "hnsw:search_ef": 100,  # size of candidates during searching (default = 100)
-                "hnsw:M": 16  # max neighbours in node graph (default = 16)
-            }
-        )
-        
-        self.metadata_collection = self.client.get_or_create_collection(
-            name=metadata_collection_name,
-            embedding_function=self.embedding_function,
-            metadata = {
-                "hnsw:space": "cosine",  # cosine better for text embeddings
-                "hnsw:construction_ef": 100,  # size of candidates during indexing (default = 100)
-                "hnsw:search_ef": 100,  # size of candidates during searching (default = 100)
-                "hnsw:M": 16  # max neighbours in node graph (default = 16)
-            }
-        )
-        
-        logger.info("FileProcessor initialized")
+        try:
+            self.client = chromadb.PersistentClient(
+                path=db_path,
+                settings=settings
+            )
+            
+            # Create embedding function per instance to avoid sharing resources
+            self.embedding_function = SentenceTransformerEmbeddingFunction(model_name="all-MiniLM-L6-v2")
+            
+            # Initialize collections with timeout protection
+            self.content_collection = self._get_or_create_collection_safe(
+                content_collection_name,
+                self.embedding_function
+            )
+            
+            self.metadata_collection = self._get_or_create_collection_safe(
+                metadata_collection_name,
+                self.embedding_function
+            )
+            
+            logger.info("FileProcessor initialized")
+            
+        except Exception as e:
+            logger.error(f"Failed to initialize FileProcessor: {e}")
+            # Set collections to None to prevent operations
+            self.content_collection = None
+            self.metadata_collection = None
+            raise
+    
+    def _get_or_create_collection_safe(self, name, embedding_function):
+        """Safely get or create a collection with timeout protection."""
+        try:
+            return self.client.get_or_create_collection(
+                name=name,
+                embedding_function=embedding_function,
+                metadata = {
+                    "hnsw:space": "cosine",  # cosine better for text embeddings
+                    "hnsw:construction_ef": 100,  # size of candidates during indexing (default = 100)
+                    "hnsw:search_ef": 100,  # size of candidates during searching (default = 100)
+                    "hnsw:M": 16  # max neighbours in node graph (default = 16)
+                }
+            )
+        except Exception as e:
+            logger.error(f"Failed to create collection {name}: {e}")
+            return None
     
     def cleanup(self):
         """Clean up resources to prevent semaphore leaks."""
@@ -132,6 +149,11 @@ class FileProcessor:
         Returns:
             ProcessingStatus: Status of the processing operation
         """
+        # Check if collections are available
+        if not self.content_collection or not self.metadata_collection:
+            logger.error("Collections not initialized - cannot process task")
+            return ProcessingStatus.FAILURE
+            
         try:
             if task.task_type == TaskType.INDEX_FILE or task.task_type == TaskType.UPDATE_FILE:
                 return self._index_file(task.file_path)
@@ -176,20 +198,29 @@ class FileProcessor:
             # Extract content
             content = self._extract_content(file_path, metadata.mime_type)
             
-            # Index metadata
-            self.metadata_collection.upsert(
-                documents=[str(metadata)],
-                metadatas=[asdict(metadata)],
-                ids=[f"meta-{file_id}"]
-            )
-            
-            # Index content if available
-            if content:
-                self.content_collection.upsert(
-                    documents=[content],
+            # Index metadata with timeout protection
+            try:
+                self.metadata_collection.upsert(
+                    documents=[str(metadata)],
                     metadatas=[asdict(metadata)],
-                    ids=[f"content-{file_id}"]
+                    ids=[f"meta-{file_id}"]
                 )
+            except Exception as e:
+                logger.error(f"Failed to upsert metadata for {file_path}: {e}")
+                return ProcessingStatus.FAILURE
+            
+            # Index content if available with timeout protection
+            if content:
+                try:
+                    self.content_collection.upsert(
+                        documents=[content],
+                        metadatas=[asdict(metadata)],
+                        ids=[f"content-{file_id}"]
+                    )
+                except Exception as e:
+                    logger.error(f"Failed to upsert content for {file_path}: {e}")
+                    # Don't fail the entire operation if content indexing fails
+                    pass
             
             logger.debug(f"Indexed file: {name}")
             return ProcessingStatus.SUCCESS

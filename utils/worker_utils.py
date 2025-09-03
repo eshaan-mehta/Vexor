@@ -77,13 +77,21 @@ def file_processing_worker_loop(file_processing_queue, processing_stats: dict) -
         processing_stats: Dictionary to update with processing statistics
     """
     # Each worker gets its own FileProcessor instance
-    processor = FileProcessor()
+    processor = None
     worker_name = threading.current_thread().name
     print_lock = get_print_lock()
     
-    thread_safe_print(f"Worker {worker_name} started")
+    thread_safe_print(f"Worker {worker_name} starting...")
     
     try:
+        # Initialize processor with error handling
+        try:
+            processor = FileProcessor()
+            thread_safe_print(f"Worker {worker_name} initialized successfully")
+        except Exception as e:
+            thread_safe_print(f"Worker {worker_name} failed to initialize: {e}")
+            return
+        
         while not file_processing_queue.is_shutdown():
             task = file_processing_queue.get_task(timeout=1.0)
             if task is None:
@@ -94,7 +102,22 @@ def file_processing_worker_loop(file_processing_queue, processing_stats: dict) -
             thread_safe_print(f"{worker_name} picked up task: {task.task_type.value} for '{file_path}'")
             
             try:
-                status = processor.process_task(task)
+                # Process task with timeout protection
+                import signal
+                
+                def timeout_handler(signum, frame):
+                    raise TimeoutError(f"Task processing timeout for {file_path}")
+                
+                # Set a 30-second timeout for individual task processing
+                old_handler = signal.signal(signal.SIGALRM, timeout_handler)
+                signal.alarm(30)
+                
+                try:
+                    status = processor.process_task(task)
+                finally:
+                    # Always clear the alarm and restore handler
+                    signal.alarm(0)
+                    signal.signal(signal.SIGALRM, old_handler)
                 
                 # Update status counters (thread-safe)
                 with print_lock:
@@ -107,6 +130,14 @@ def file_processing_worker_loop(file_processing_queue, processing_stats: dict) -
                 success = status in [ProcessingStatus.SUCCESS, ProcessingStatus.SKIPPED, ProcessingStatus.HIDDEN, ProcessingStatus.LARGE]
                 file_processing_queue.task_completed(task, success)
                 
+            except TimeoutError as e:
+                # Handle timeout specifically
+                with print_lock:
+                    processing_stats["failure"] += 1
+                
+                thread_safe_print(f"{worker_name} TIMEOUT processing '{file_path}': {e}")
+                file_processing_queue.task_completed(task, False)
+                
             except Exception as e:
                 # Update failure counter
                 with print_lock:
@@ -117,9 +148,12 @@ def file_processing_worker_loop(file_processing_queue, processing_stats: dict) -
     
     finally:
         # Clean up processor resources when worker stops
-        try:
-            processor.cleanup()
-            thread_safe_print(f"Worker {worker_name} stopped and cleaned up")
-        except Exception as e:
-            thread_safe_print(f"Worker {worker_name} cleanup error: {e}")
-            thread_safe_print(f"Worker {worker_name} stopped")
+        if processor:
+            try:
+                processor.cleanup()
+                thread_safe_print(f"Worker {worker_name} stopped and cleaned up")
+            except Exception as e:
+                thread_safe_print(f"Worker {worker_name} cleanup error: {e}")
+                thread_safe_print(f"Worker {worker_name} stopped")
+        else:
+            thread_safe_print(f"Worker {worker_name} stopped (no processor to clean up)")

@@ -26,7 +26,7 @@ SEARCH_TIMEOUT_SECONDS = 5.0
 SEARCH_REQUEST_ID_PREFIX = "search-"
 
 # Indexing Configuration
-INDEXING_TIMEOUT_SECONDS = 300  # 5 minutes
+INDEXING_TIMEOUT_SECONDS = 60  # 1 minute (reduced for better test responsiveness)
 INDEXING_PROGRESS_CHECK_INTERVAL = 0.5  # 500ms
 INDEXING_DEBUG_OUTPUT_INTERVAL = 30  # 30 seconds
 DEFAULT_DIRECTORY = "~/Desktop"

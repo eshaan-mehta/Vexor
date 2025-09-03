@@ -31,7 +31,33 @@ This directory contains all test files for the File Search API backend.
   - Basic search functionality
   - Status endpoint testing
 
-### 4. `run_tests.py` - Test Runner
+### 4. `test_file_processing_workers.py` - File Processing Worker Tests
+
+- **Purpose**: Validate concurrent file processing worker threads
+- **Features**:
+  - Concurrent file processing validation
+  - Worker thread safety testing
+  - Performance and throughput measurement
+
+### 5. `test_database_thread_safety.py` - Database Thread Safety Tests
+
+- **Purpose**: Validate ChromaDB thread safety under concurrent access
+- **Features**:
+  - Concurrent database read operations
+  - Concurrent database write operations
+  - Database consistency under mixed load
+
+### 6. `test_file_watcher_responsiveness.py` - File Watcher Tests
+
+- **Purpose**: Validate file system monitoring and eventual consistency
+- **Features**:
+  - File creation detection
+  - File modification detection
+  - File deletion handling
+  - Rapid file changes processing
+  - Eventual consistency validation
+
+### 7. `run_tests.py` - Test Runner
 
 - **Purpose**: Enhanced test runner with colored output
 - **Features**:
@@ -63,32 +89,38 @@ This directory contains all test files for the File Search API backend.
 ```bash
 cd tests
 
-# Quick test (recommended for debugging)
-python test_search_simple.py
+# Search system tests
+python test_search_simple.py              # Quick synchronous tests
+python test_search_generation.py          # Comprehensive async tests
 
-# Comprehensive test suite
-python test_search_generation.py
+# Backend validation tests (Task 9)
+python test_file_processing_workers.py    # Worker thread validation
+python test_database_thread_safety.py     # Database thread safety
+python test_file_watcher_responsiveness.py # File watcher tests
 
 # Basic API tests
 python test_api.py
 
-# Run with test runner
+# Enhanced test runner
 python run_tests.py
 ```
 
 ### From the project root:
 
 ```bash
-# Quick test
+# Search system tests
 python tests/test_search_simple.py
-
-# Comprehensive test suite
 python tests/test_search_generation.py
+
+# Backend validation tests (Task 9)
+python tests/test_file_processing_workers.py
+python tests/test_database_thread_safety.py
+python tests/test_file_watcher_responsiveness.py
 
 # Basic API tests
 python tests/test_api.py
 
-# Run with test runner
+# Enhanced test runner
 python tests/run_tests.py
 ```
 
